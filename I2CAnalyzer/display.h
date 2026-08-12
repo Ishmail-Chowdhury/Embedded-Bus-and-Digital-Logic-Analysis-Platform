@@ -4,5 +4,3 @@
 
 void initDisplay();
 void updateDisplay(int packetCount, const Packet& packet, int selectedIndex);
-bool displayNextRequested();
-bool displayPrevRequested();

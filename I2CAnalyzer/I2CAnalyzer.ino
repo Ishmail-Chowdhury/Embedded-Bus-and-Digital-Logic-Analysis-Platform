@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <string.h>
 #include "bus_sampler.h"
 #include "edge_detector.h"
 #include "bit_decoder.h"
@@ -8,6 +9,7 @@
 
 static const int BUTTON_NEXT = 2;
 static const int BUTTON_PREV = 3;
+static const uint8_t OLED_I2C_ADDRESS = 0x3C;
 
 void setup()
 {
@@ -26,6 +28,7 @@ void setup()
 void loop()
 {
     static int selectedIndex = 0;
+    static bool displayDirty = true;
     BusState state = readBus();
     Event event = detectEdge(state);
 
@@ -50,8 +53,12 @@ void loop()
             if (packetReady())
             {
                 Packet packet = getPacket();
-                pushPacket(packet);
-                selectedIndex = packetCount() - 1;
+                if (packet.address != OLED_I2C_ADDRESS)
+                {
+                    pushPacket(packet);
+                    selectedIndex = packetCount() - 1;
+                    displayDirty = true;
+                }
             }
             break;
 
@@ -68,12 +75,22 @@ void loop()
     {
         if (digitalRead(BUTTON_NEXT) == LOW)
         {
-            selectedIndex = min(count - 1, selectedIndex + 1);
+            int nextIndex = min(count - 1, selectedIndex + 1);
+            if (nextIndex != selectedIndex)
+            {
+                selectedIndex = nextIndex;
+                displayDirty = true;
+            }
             delay(150);
         }
         if (digitalRead(BUTTON_PREV) == LOW)
         {
-            selectedIndex = max(0, selectedIndex - 1);
+            int prevIndex = max(0, selectedIndex - 1);
+            if (prevIndex != selectedIndex)
+            {
+                selectedIndex = prevIndex;
+                displayDirty = true;
+            }
             delay(150);
         }
         selectedIndex = constrain(selectedIndex, 0, count - 1);
@@ -84,6 +101,12 @@ void loop()
     {
         memset(&current, 0, sizeof(current));
     }
-    updateDisplay(count, current, selectedIndex);
+
+    if (displayDirty)
+    {
+        updateDisplay(count, current, selectedIndex);
+        displayDirty = false;
+    }
+
     delay(5);
 }

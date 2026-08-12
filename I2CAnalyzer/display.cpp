@@ -17,23 +17,33 @@ static String formatHexByte(uint8_t value)
     return String(hexBuffer);
 }
 
-static String formatPacketLine(const Packet& packet)
+static String formatDataByte(const Packet& packet)
+{
+    if (packet.length == 0)
+    {
+        return "--";
+    }
+    return formatHexByte(packet.data[0]);
+}
+
+static String formatPhase1Line(const Packet& packet)
 {
     String result = "STARTADDR 0x";
     result += formatHexByte(packet.address);
     result += packet.read ? " R" : " W";
     result += "DATA 0x";
-
-    if (packet.length == 0)
-    {
-        result += "--";
-    }
-    else
-    {
-        result += formatHexByte(packet.data[0]);
-    }
-
+    result += formatDataByte(packet);
     result += "STOP";
+    return result;
+}
+
+static String formatPhase2Line(const Packet& packet)
+{
+    String result = "ADDR 0x";
+    result += formatHexByte(packet.address);
+    result += packet.read ? " R" : " W";
+    result += "DATA 0x";
+    result += formatDataByte(packet);
     return result;
 }
 
@@ -59,58 +69,50 @@ void initDisplay()
 
 void updateDisplay(int packetCount, const Packet& packet, int selectedIndex)
 {
-    String line1;
-    String line2;
+    static int lastShownPacketCount = -1;
 
     if (packetCount == 0)
     {
-        line1 = "No packets captured";
-        line2 = "Waiting for I2C traffic";
-    }
-    else
-    {
-        String packetLine = formatPacketLine(packet);
-        if (packetLine.length() <= 21)
-        {
-            line1 = packetLine;
-            line2 = "Pkt ";
-            line2 += String(selectedIndex + 1);
-            line2 += "/";
-            line2 += String(packetCount);
-        }
-        else
-        {
-            line1 = packetLine.substring(0, 21);
-            line2 = packetLine.substring(21);
-            if (line2.length() > 18)
-            {
-                line2 = line2.substring(0, 18);
-            }
-            line2 += " ";
-            line2 += "#";
-            line2 += String(selectedIndex + 1);
-            line2 += "/";
-            line2 += String(packetCount);
-        }
+        lastShownPacketCount = 0;
+
+        Serial.println("----- OLED OUTPUT -----");
+        Serial.println("No packets captured");
+        Serial.println("Waiting for I2C traffic");
+
+        display.clearDisplay();
+        display.setCursor(0, 0);
+        display.println("No packets captured");
+        display.println("Waiting for I2C");
+        display.println("traffic");
+        display.display();
+        return;
     }
 
+    String phase1Line = formatPhase1Line(packet);
+    String phase2Line = formatPhase2Line(packet);
+    String packetLine = "Packet ";
+    packetLine += String(selectedIndex + 1);
+    packetLine += "/";
+    packetLine += String(packetCount);
+    bool newCapture = packetCount != lastShownPacketCount;
+
     Serial.println("----- OLED OUTPUT -----");
-    Serial.println(line1);
-    Serial.println(line2);
+    Serial.println(phase1Line);
+    Serial.println(phase2Line);
+    Serial.println(packetLine);
 
     display.clearDisplay();
     display.setCursor(0, 0);
-    display.println(line1);
-    display.println(line2);
+    if (newCapture)
+    {
+        display.println(phase1Line);
+    }
+    else
+    {
+        display.println(phase2Line);
+    }
+    display.println(packetLine);
     display.display();
-}
 
-bool displayNextRequested()
-{
-    return false;
-}
-
-bool displayPrevRequested()
-{
-    return false;
+    lastShownPacketCount = packetCount;
 }
