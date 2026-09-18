@@ -7,66 +7,41 @@
 GPIOController gpioController;
 InterruptController interruptController;
 RegisterMap registerMap(gpioController, interruptController);
-
-void receiveEvent(int byteCount);
-void requestEvent();
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(LED_BUILTIN, OUTPUT);
-  gpioController.begin();
-  interruptController.begin();
-  registerMap.begin();
-
-  Wire.begin(PERIPHERAL_ADDRESS);
-  Wire.onReceive(receiveEvent);
-  Wire.onRequest(requestEvent);
-
-  Serial.println("External GPIO Peripheral ready");
-  Serial.println("Register map active");
-}
-
-void loop() {
-  static unsigned long lastPoll = 0;
-  unsigned long now = millis();
-
-  if (now - lastPoll > 50) {
-    lastPoll = now;
-    registerMap.updateStatusFromInputs();
-  }
-
-  if (interruptController.hasPendingInterrupt()) {
-    digitalWrite(LED_BUILTIN, HIGH);
-  } else {
-    digitalWrite(LED_BUILTIN, LOW);
-  }
-}
+static volatile uint8_t registerPointer = 0;
 
 void receiveEvent(int byteCount) {
-  if (byteCount < 2) {
-    return;
-  }
-
-  uint8_t address = Wire.read();
-  uint8_t value = Wire.read();
-  registerMap.writeRegister(address, value);
-
-  Serial.print("WRITE register=0x");
-  Serial.print(address, HEX);
-  Serial.print(" value=0x");
-  Serial.println(value, HEX);
+    if (byteCount <= 0 || !Wire.available()) return;
+    registerPointer = static_cast<uint8_t>(Wire.read());
+    while (Wire.available()) {
+        registerMap.writeRegister(registerPointer, static_cast<uint8_t>(Wire.read()));
+        ++registerPointer;
+    }
 }
 
 void requestEvent() {
-  if (Wire.available() == 0) {
-    uint8_t address = 0x00;
-    Wire.write(registerMap.readRegister(address));
-    return;
-  }
+    // One byte per request. Pointer survives STOP and repeated START.
+    Wire.write(registerMap.readRegister(registerPointer));
+    ++registerPointer;
+}
 
-  uint8_t address = Wire.read();
-  Wire.write(registerMap.readRegister(address));
+void setup() {
+    pinMode(LED_BUILTIN, OUTPUT);
+    pinMode(EXPANDER_INT_PIN, INPUT_PULLUP);
+    gpioController.begin();
+    interruptController.begin();
+    registerMap.begin();
+    registerMap.updateStatusFromInputs();
+    Wire.begin(PERIPHERAL_ADDRESS);
+    Wire.onReceive(receiveEvent);
+    Wire.onRequest(requestEvent);
+}
 
-  Serial.print("READ register=0x");
-  Serial.println(address, HEX);
+void loop() {
+    static uint32_t lastPoll = 0;
+    const uint32_t now = millis();
+    if (now - lastPoll >= INPUT_POLL_MS || digitalRead(EXPANDER_INT_PIN) == LOW) {
+        registerMap.updateStatusFromInputs();
+        lastPoll = millis();
+    }
+    digitalWrite(LED_BUILTIN, interruptController.hasPendingInterrupt() ? HIGH : LOW);
 }

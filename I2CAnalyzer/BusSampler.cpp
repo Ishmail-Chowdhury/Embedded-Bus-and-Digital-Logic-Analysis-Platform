@@ -1,19 +1,46 @@
 #include "bus_sampler.h"
+#include "config.h"
 #include <Arduino.h>
-
-static const int SDA_PIN = A4;
-static const int SCL_PIN = A5;
-
-void initBusSampler()
-{
-    pinMode(SDA_PIN, INPUT_PULLUP);
-    pinMode(SCL_PIN, INPUT_PULLUP);
+#include <avr/interrupt.h>
+#include <util/atomic.h>
+#if !defined(__AVR_ATmega328P__) || F_CPU != 16000000UL
+#error "I2C capture requires a 16 MHz ATmega328P (Uno R3)"
+#endif
+static_assert((EDGE_QUEUE_SIZE & (EDGE_QUEUE_SIZE - 1)) == 0 && EDGE_QUEUE_SIZE <= 256,
+              "Edge queue size must be a power of two <= 256");
+namespace {
+volatile uint8_t states[EDGE_QUEUE_SIZE];
+volatile uint8_t head = 0, tail = 0;
+volatile bool overflowed = false;
 }
-
-BusState readBus()
-{
-    BusState state;
-    state.sda = digitalRead(SDA_PIN) != LOW;
-    state.scl = digitalRead(SCL_PIN) != LOW;
-    return state;
+ISR(PCINT1_vect) {
+    const uint8_t pins = PINC; // SDA and SCL from the same port snapshot.
+    const uint8_t next = (head + 1) & (EDGE_QUEUE_SIZE - 1);
+    if (next == tail) { overflowed = true; PCMSK1 = 0; return; }
+    states[head] = pins;
+    head = next;
 }
+void initBusSampler() { pinMode(A4, INPUT); pinMode(A5, INPUT); }
+BusState readBus() {
+    const uint8_t pins = PINC;
+    return {(pins & _BV(PC4)) != 0, (pins & _BV(PC5)) != 0};
+}
+void startBusCapture() {
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+        head = tail = 0; overflowed = false;
+        PCIFR = _BV(PCIF1);
+        PCMSK1 = _BV(PCINT12) | _BV(PCINT13);
+        PCICR |= _BV(PCIE1);
+    }
+}
+void stopBusCapture() {
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) { PCMSK1 = 0; PCICR &= ~_BV(PCIE1); }
+}
+bool nextBusState(BusState& state) {
+    if (head == tail) return false;
+    const uint8_t pins = states[tail];
+    tail = (tail + 1) & (EDGE_QUEUE_SIZE - 1);
+    state = {(pins & _BV(PC4)) != 0, (pins & _BV(PC5)) != 0};
+    return true;
+}
+bool busCaptureOverflowed() { return overflowed; }

@@ -1,45 +1,17 @@
 #include "bit_decoder.h"
-
-static uint8_t currentByte = 0;
-static uint8_t bitCount = 0;
-static bool ready = false;
-static bool skipAckBit = false;
-
-void initBitDecoder()
-{
-    currentByte = 0;
-    bitCount = 0;
-    ready = false;
-    skipAckBit = false;
+static uint8_t currentByte = 0, bitCount = 0;
+static bool ready = false, acknowledged = false;
+void initBitDecoder() { currentByte = bitCount = 0; ready = acknowledged = false; }
+void addBit(bool bit) {
+    if (ready) return;
+    if (bitCount < 8) { currentByte = (currentByte << 1) | bit; ++bitCount; }
+    else { acknowledged = !bit; ready = true; }
 }
-
-void addBit(bool bit)
-{
-    if (skipAckBit)
-    {
-        skipAckBit = false;
-        return;
-    }
-
-    currentByte = (currentByte << 1) | (bit ? 1 : 0);
-    bitCount++;
-    if (bitCount == 8)
-    {
-        ready = true;
-        skipAckBit = true;
-    }
-}
-
-bool byteReady()
-{
-    return ready;
-}
-
-uint8_t getByte()
-{
-    uint8_t result = currentByte;
-    currentByte = 0;
-    bitCount = 0;
-    ready = false;
+bool byteReady() { return ready; }
+bool byteAcknowledged() { return acknowledged; }
+uint8_t pendingBitCount() { return bitCount; }
+uint8_t getByte() {
+    const uint8_t result = currentByte;
+    currentByte = bitCount = 0; ready = false;
     return result;
 }

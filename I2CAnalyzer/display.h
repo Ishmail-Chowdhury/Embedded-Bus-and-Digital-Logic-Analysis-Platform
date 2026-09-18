@@ -1,6 +1,5 @@
 #pragma once
-
 #include "packet_decoder.h"
-
 void initDisplay();
-void updateDisplay(int packetCount, const Packet& packet, int selectedIndex);
+void showCaptureStatus(bool capturing, bool overflowed);
+void updateDisplay(int count, const Packet& packet, int selectedIndex);

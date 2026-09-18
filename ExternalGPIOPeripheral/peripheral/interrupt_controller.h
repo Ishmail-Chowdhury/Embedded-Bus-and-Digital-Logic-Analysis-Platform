@@ -1,20 +1,10 @@
-#ifndef INTERRUPT_CONTROLLER_H
-#define INTERRUPT_CONTROLLER_H
-
+#pragma once
 #include <Arduino.h>
-
 class InterruptController {
-  public:
-    InterruptController();
+public:
     void begin();
-    void trigger();
-    void clear();
+    void setPending(bool pending);
     bool hasPendingInterrupt() const;
-    void setInterruptEnabled(bool enabled);
-
-  private:
-    bool pending_;
-    bool enabled_;
+private:
+    volatile bool pending_ = false;
 };
-
-#endif

@@ -23,3 +23,14 @@ static const uint16_t POST_TRIGGER_SAMPLES = 412;
 
 static const uint8_t DEFAULT_TRIGGER_CHANNEL = 0;
 static const bool DEFAULT_TRIGGER_RISING = true;
+
+// POST includes the trigger sample: 100 before + 1 trigger + 411 after.
+static_assert(PRE_TRIGGER_SAMPLES + POST_TRIGGER_SAMPLES == CAPTURE_BUFFER_SIZE, "Capture partition mismatch");
+static_assert(POST_TRIGGER_SAMPLES > 0, "Post capture includes the trigger sample");
+static_assert((CAPTURE_BUFFER_SIZE & (CAPTURE_BUFFER_SIZE - 1)) == 0, "Buffer must be power of two");
+static_assert(CAPTURE_BUFFER_SIZE < 32768, "Tick comparisons require a short capture window");
+static const uint32_t ARM_TIMEOUT_SAMPLES = 100000UL; // 1 second at 100 kS/s
+#ifndef OLED_HEIGHT
+#define OLED_HEIGHT 64
+#endif
+#define OLED_ADDRESS 0x3C

@@ -1,125 +1,59 @@
 #include "display.h"
 #include "config.h"
 #include <U8x8lib.h>
-
+#if OLED_HEIGHT == 64
 static U8X8_SSD1306_128X64_NONAME_SW_I2C display(OLED_SCL, OLED_SDA, U8X8_PIN_NONE);
-
-static void toBinaryString(uint8_t value, char* out)
-{
-    for (int i = 7; i >= 0; i--)
-    {
-        out[7 - i] = ((value >> i) & 0x01) ? '1' : '0';
-    }
-    out[8] = '\0';
+#elif OLED_HEIGHT == 32
+static U8X8_SSD1306_128X32_UNIVISION_SW_I2C display(OLED_SCL, OLED_SDA, U8X8_PIN_NONE);
+#else
+#error "OLED_HEIGHT must be 32 or 64"
+#endif
+static void binary(uint8_t value, char* out) {
+    for (uint8_t i = 0; i < 8; ++i) out[i] = value & (0x80 >> i) ? '1' : '0';
+    out[8] = 0;
 }
-
-bool initDisplay()
-{
-    display.begin();
-    display.setFlipMode(0);
-    display.clear();
-    display.setFont(u8x8_font_chroma48medium8_r);
-    display.drawString(0, 0, "DIGITAL ANALYZER");
-    display.drawString(0, 2, "Phase 1-3 Ready");
-    display.drawString(0, 4, "Serial: r/n/p/t/e");
+bool initDisplay() {
+    display.setBusClock(100000);
+    display.setI2CAddress(OLED_ADDRESS << 1); display.begin();
+    display.setFont(u8x8_font_chroma48medium8_r); display.clear();
     return true;
 }
-
-void showLiveState(uint8_t state, uint16_t sampleRateHz)
-{
-    char bin[9];
-    char line2[17];
-    char line3[17];
-
-    toBinaryString(state, bin);
-    snprintf(line2, sizeof(line2), "CH 76543210");
-    snprintf(line3, sizeof(line3), "   %s", bin);
-
-    display.clearLine(0);
-    display.clearLine(1);
-    display.clearLine(2);
-    display.clearLine(3);
-    display.clearLine(4);
-    display.drawString(0, 0, "LIVE MONITOR");
-    display.drawString(0, 2, line2);
-    display.drawString(0, 3, line3);
-
-    char line4[17];
-    snprintf(line4, sizeof(line4), "%u kS/s", sampleRateHz / 1000);
-    display.drawString(0, 5, line4);
+void showLiveState(uint8_t state, uint32_t sampleRateHz) {
+    (void)sampleRateHz;
+    char bits[9]; binary(state, bits); display.clear();
+    display.drawString(0, 0, "LIVE ~10 Hz UI");
+    display.drawString(0, 1, "CH 76543210");
+    display.drawString(3, 2, bits);
+    display.drawString(0, 3, "r=100 kS/s burst");
 }
-
-void showArmedStatus(uint8_t state, uint16_t bufferedSamples, uint16_t sampleRateHz, const TriggerConfig& trigger)
-{
-    char bin[9];
-    char line2[17];
-    char line3[17];
-    char line4[17];
-    char line5[17];
-
-    toBinaryString(state, bin);
-
-    snprintf(line2, sizeof(line2), "CH 76543210");
-    snprintf(line3, sizeof(line3), "   %s", bin);
-    snprintf(line4, sizeof(line4), "BUF %u/%u", bufferedSamples, CAPTURE_BUFFER_SIZE);
-    snprintf(line5, sizeof(line5), "TRG CH%u %c", trigger.channel, trigger.risingEdge ? '^' : 'v');
-
-    display.clear();
-    display.drawString(0, 0, "ARMED");
-    display.drawString(0, 1, line5);
-    display.drawString(0, 2, line2);
-    display.drawString(0, 3, line3);
-    display.drawString(0, 5, line4);
-
-    char line6[17];
-    snprintf(line6, sizeof(line6), "%u kS/s", sampleRateHz / 1000);
-    display.drawString(0, 6, line6);
+void showArmedStatus(uint8_t state, uint16_t bufferedSamples, uint32_t sampleRateHz, const TriggerConfig& trigger) {
+    (void)state; (void)bufferedSamples;
+    char line[17]; display.clear();
+    snprintf(line, sizeof(line), "%lu kS/s 1s max", static_cast<unsigned long>(sampleRateHz / 1000));
+    display.drawString(0, 0, "ARMED"); display.drawString(0, 1, line);
+    snprintf(line, sizeof(line), "CH%u %c %s", trigger.channel, trigger.risingEdge ? '^' : 'v', trigger.enabled ? "edge" : "auto");
+    display.drawString(0, 2, line);
 }
-
-void showCaptureSummary(uint16_t totalSamples, uint16_t preSamples, uint16_t postSamples, const TriggerConfig& trigger)
-{
-    char line2[17];
-    char line3[17];
-    char line4[17];
-    char line5[17];
-
-    snprintf(line2, sizeof(line2), "TRG CH%u %c", trigger.channel, trigger.risingEdge ? '^' : 'v');
-    snprintf(line3, sizeof(line3), "PRE %u", preSamples);
-    snprintf(line4, sizeof(line4), "POST %u", postSamples);
-    snprintf(line5, sizeof(line5), "TOTAL %u", totalSamples);
-
-    display.clear();
+void showCaptureSummary(uint16_t totalSamples, uint16_t preSamples, uint16_t postSamples, const TriggerConfig& trigger) {
+    (void)trigger;
+    char line[17]; display.clear();
     display.drawString(0, 0, "CAPTURE COMPLETE");
-    display.drawString(0, 2, line2);
-    display.drawString(0, 3, line3);
-    display.drawString(0, 4, line4);
-    display.drawString(0, 5, line5);
-    display.drawString(0, 7, "n/p browse, r rearm");
+    snprintf(line, sizeof(line), "PRE%u POST%u", preSamples, postSamples); display.drawString(0, 1, line);
+    snprintf(line, sizeof(line), "TOTAL %u", totalSamples); display.drawString(0, 2, line);
+    display.drawString(0, 3, "n/p view d=CSV");
+}
+void showSampleDetail(uint16_t sampleIndex, uint16_t totalSamples, const Sample& sample, uint16_t triggerTick) {
+    char line[17], bits[9]; binary(sample.state, bits); display.clear();
+    snprintf(line, sizeof(line), "IDX %u/%u", sampleIndex + 1, totalSamples); display.drawString(0, 0, line);
+    display.drawString(0, 1, bits);
+    const int32_t deltaUs = static_cast<int16_t>(sample.tick - triggerTick) * static_cast<int32_t>(SAMPLE_INTERVAL_US);
+    snprintf(line, sizeof(line), "dT %ld us", static_cast<long>(deltaUs)); display.drawString(0, 2, line);
+    display.drawString(0, 3, "n/p browse r=arm");
 }
 
-void showSampleDetail(uint16_t sampleIndex, uint16_t totalSamples, const Sample& sample, uint16_t triggerTick)
-{
-    char bin[9];
-    char line1[17];
-    char line2[17];
-    char line3[17];
-    char line4[17];
-
-    toBinaryString(sample.state, bin);
-
-    const int16_t deltaTick = static_cast<int16_t>(sample.tick - triggerTick);
-    const int32_t deltaUs = static_cast<int32_t>(deltaTick) * SAMPLE_INTERVAL_US;
-
-    snprintf(line1, sizeof(line1), "IDX %u/%u", sampleIndex + 1, totalSamples);
-    snprintf(line2, sizeof(line2), "STATE %s", bin);
-    snprintf(line3, sizeof(line3), "HEX 0x%02X", sample.state);
-    snprintf(line4, sizeof(line4), "dT %ld us", static_cast<long>(deltaUs));
-
+void showCaptureError(bool timeout) {
     display.clear();
-    display.drawString(0, 0, "SAMPLE VIEW");
-    display.drawString(0, 2, line1);
-    display.drawString(0, 3, line2);
-    display.drawString(0, 4, line3);
-    display.drawString(0, 5, line4);
-    display.drawString(0, 7, "n/p next/prev");
+    display.drawString(0, 0, timeout ? "TRIGGER TIMEOUT" : "TIMING OVERRUN");
+    display.drawString(0, 1, "No valid capture");
+    display.drawString(0, 3, "r=retry l=live");
 }

@@ -1,39 +1,13 @@
 #include "interrupt_controller.h"
 #include "config.h"
-
-InterruptController::InterruptController()
-  : pending_(false),
-    enabled_(false) {
-}
-
 void InterruptController::begin() {
-  pinMode(INT_PIN, OUTPUT);
-  digitalWrite(INT_PIN, HIGH);
-  pending_ = false;
-  enabled_ = false;
+    digitalWrite(INT_PIN, LOW);
+    pinMode(INT_PIN, INPUT);
+    pending_ = false;
 }
-
-void InterruptController::trigger() {
-  if (!enabled_) {
-    return;
-  }
-
-  pending_ = true;
-  digitalWrite(INT_PIN, LOW);
+void InterruptController::setPending(bool pending) {
+    pending_ = pending;
+    // The host supplies the pull-up; never drive the line high.
+    pinMode(INT_PIN, pending ? OUTPUT : INPUT);
 }
-
-void InterruptController::clear() {
-  pending_ = false;
-  digitalWrite(INT_PIN, HIGH);
-}
-
-bool InterruptController::hasPendingInterrupt() const {
-  return pending_;
-}
-
-void InterruptController::setInterruptEnabled(bool enabled) {
-  enabled_ = enabled;
-  if (!enabled_) {
-    clear();
-  }
-}
+bool InterruptController::hasPendingInterrupt() const { return pending_; }

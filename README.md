@@ -1,231 +1,125 @@
 # Embedded Bus and Digital Logic Analysis Platform
 
-## Project Review Summary
+Three independent Arduino Uno R3 modes: I2C transaction observation, eight-channel logic capture, and a register-mapped GPIO peripheral. Each sketch runs on its own 16 MHz ATmega328P board; the GPIO example needs a host and a peripheral board.
 
-This repository is a multi-mode Arduino platform focused on embedded bus observation, digital waveform capture, and programmable peripheral emulation.
+The firmware has been reviewed against component documentation, compiled for the Uno, and exercised with native regression tests. Physical operation and electrical/timing compliance still require the [bench checks](docs/validation.md). No separate parts list, schematic, or exact OLED module specification was present in the repository. The [parts and constraints document](docs/parts-and-constraints.md) records inferred parts, datasheet references, and the information still needed.
 
-It contains three working modules:
+## Changes that affect existing wiring and operation
 
-1. Mode 1: I2C Analyzer
-2. Mode 2: Logic Analyzer
-3. Mode 3: External GPIO Peripheral
+- Both analyzers now use a separate software-I2C OLED connection: **SDA D8, SCL D9**. In particular, move the I2C analyzer's OLED off the observed A4/A5 bus.
+- The peripheral's expanders also use **SDA D8, SCL D9**, on a bus separate from the host A4/A5 link. These pins are on a different board from the analyzer OLED.
+- **PCF8574A addresses are 0x38 and 0x39** with the straps below. The original 0x20/0x21 settings did not match the named parts.
+- I2C observation has explicit capture and pause modes. OLED/Serial packet rendering happens when paused. The conservative software-sniffer target is **10 kHz or slower**, with SCL high/low each at least 50 µs; this requires bench qualification.
+- Logic capture is a **100 kS/s burst**, with a one-second maximum arm/capture window. Every arm starts fresh; `a` and `r` are aliases. Display updates and serial commands pause during the burst.
 
-Each mode is implemented as a separate sketch and can be developed or tested independently.
+## Build and upload
 
-## Repository Structure
+Use Arduino AVR Boards and select **Arduino Uno**. Install **U8g2** for both analyzer sketches (U8x8 text mode); Adafruit GFX/SSD1306 are no longer needed. Wire is supplied by the AVR core. Validation used AVR core 1.8.8 and U8g2 2.36.18.
 
-- `I2CAnalyzer/` -> I2C transaction decoding module
-- `logic-analyzer/` -> 8-channel logic capture module
-- `ExternalGPIOPeripheral/` -> host/peripheral I2C device emulation module
-
-## Overall Technical State
-
-- Clean module separation by purpose
-- Uno-oriented memory-aware implementation choices
-- Good educational value for embedded bus analysis and register-mapped interface design
-
----
-
-## Mode 1: I2C Analyzer
-
-### Purpose
-
-Decode I2C transactions and show packet history on an OLED while filtering internal display traffic.
-
-### Entry Sketch
+Open and upload one of:
 
 - `I2CAnalyzer/I2CAnalyzer.ino`
-
-### Required Libraries
-
-- Adafruit GFX Library
-- Adafruit SSD1306
-
-Install from Arduino IDE:
-
-`Sketch -> Include Library -> Manage Libraries...`
-
-### Wiring (Elegoo Uno R3)
-
-- OLED VCC -> 5V
-- OLED GND -> GND
-- OLED SDA -> A4
-- OLED SCL -> A5
-- Next button -> D2 (INPUT_PULLUP, button to GND)
-- Prev button -> D3 (INPUT_PULLUP, button to GND)
-
-### Behavior Notes
-
-- Uses A4/A5 bus sampling
-- Filters OLED traffic at address `0x3C` before packet history storage
-- Ring buffer stores latest 32 decoded packets
-- Packet browsing is controlled by next/prev buttons
-
-### Upload Steps
-
-1. Open `I2CAnalyzer/I2CAnalyzer.ino` in Arduino IDE.
-2. Select board: Arduino Uno.
-3. Select the correct serial port.
-4. Upload.
-5. Open Serial Monitor at 115200 baud for debug output.
-
----
-
-## Mode 2: Logic Analyzer
-
-### Purpose
-
-Standalone 8-channel digital logic analyzer for live monitoring and triggered waveform capture.
-
-### Entry Sketch
-
 - `logic-analyzer/logic-analyzer.ino`
-
-### Phase Coverage
-
-- Phase 1: live 8-channel state monitor
-- Phase 2: timestamped capture with fixed interval
-- Phase 3: edge trigger plus ring buffer plus pre/post trigger capture
-
-### Required Library
-
-- U8g2 by oliver
-
-The sketch uses U8x8 mode from U8g2 to reduce RAM usage on Uno.
-
-### Wiring (Elegoo Uno R3)
-
-Analyzer inputs:
-
-- CH0 -> D2
-- CH1 -> D3
-- CH2 -> D4
-- CH3 -> D5
-- CH4 -> D6
-- CH5 -> D7
-- CH6 -> A0
-- CH7 -> A1
-
-OLED (software I2C):
-
-- OLED VCC -> 5V
-- OLED GND -> GND
-- OLED SDA -> D8
-- OLED SCL -> D9
-
-### Sampling and Buffer
-
-- Sample interval: 10 us (100 kS/s)
-- Buffer size: 512 samples
-- Trigger edge: rising or falling selectable
-- Trigger channel: CH0 to CH7 selectable
-
-Each sample stores:
-
-- `tick` as `uint16_t`
-- `state` as `uint8_t`
-
-Microseconds are derived as: `tick * SAMPLE_INTERVAL_US`.
-
-### Serial Commands (115200)
-
-- `l` = live monitor mode
-- `a` = arm capture without clearing buffer
-- `r` = re-arm and clear buffer
-- `t` = toggle trigger edge (rising or falling)
-- `e` = enable or disable trigger
-- `c0` to `c7` = set trigger channel
-- `n` = next sample view (after capture)
-- `p` = previous sample view (after capture)
-
-### Quick Start
-
-1. Open `logic-analyzer/logic-analyzer.ino` in Arduino IDE.
-2. Select board: Arduino Uno.
-3. Install U8g2 if needed.
-4. Upload.
-5. Open Serial Monitor at 115200 baud.
-6. Run `l` to check live channel states.
-7. Run `r` to arm trigger capture, then inspect data with `n` and `p`.
-
----
-
-## Mode 3: External GPIO Peripheral
-
-### Purpose
-
-Implements a software-defined, register-mapped I2C peripheral using Uno boards and PCF8574A GPIO expanders.
-
-### Architecture Model
-
-- Host Uno acts as controller
-- Peripheral Uno acts as external device
-- Host communicates through I2C register read/write operations
-- Peripheral exposes register map and drives external GPIO state
-
-### Project Structure
-
 - `ExternalGPIOPeripheral/peripheral/peripheral.ino`
-- `ExternalGPIOPeripheral/peripheral/config.h`
-- `ExternalGPIOPeripheral/peripheral/gpio_controller.h`
-- `ExternalGPIOPeripheral/peripheral/gpio_controller.cpp`
-- `ExternalGPIOPeripheral/peripheral/registers.h`
-- `ExternalGPIOPeripheral/peripheral/registers.cpp`
-- `ExternalGPIOPeripheral/peripheral/interrupt_controller.h`
-- `ExternalGPIOPeripheral/peripheral/interrupt_controller.cpp`
 - `ExternalGPIOPeripheral/host/host.ino`
 
-### Register Map
+Use 115200 baud for the analyzers and host. The peripheral runs without serial logging. Set `OLED_HEIGHT` and `OLED_ADDRESS` in the relevant analyzer's `config.h` for the actual module. The original defaults are retained: I2C analyzer 128×32, logic analyzer 128×64, address 0x3C. Both heights are supported and compiled. OLED absence does not prevent serial capture, but the display driver does not diagnose a disconnected module.
 
-- `0x00` REG_GPIO0_OUTPUT
-- `0x01` REG_GPIO1_OUTPUT
-- `0x02` REG_GPIO0_INPUT
-- `0x03` REG_GPIO1_INPUT
-- `0x04` REG_DIRECTION0
-- `0x05` REG_DIRECTION1
-- `0x06` REG_STATUS
-- `0x07` REG_CONTROL
-- `0x08` REG_INTERRUPT_STATUS
-- `0x09` REG_INTERRUPT_ENABLE
-- `0x0A` REG_DEVICE_ID
+## Mode 1: I2C analyzer
 
-### Example Transactions
+| Connection | Uno pin |
+|---|---|
+| Observed SDA / SCL | A4 / A5 (inputs, no internal pull-ups) |
+| OLED SDA / SCL | D8 / D9 |
+| Next / previous button | D2 / D3, each button to GND |
+| Common signal reference | GND |
 
-- Write `0x55` to register `0x00` to drive output bits
-- Read register `0x02` to get GPIO0 input state
+Power the OLED according to its **module** specification; see the electrical constraints before connecting it to 5 V logic.
 
-### Phase Goals
+Pin-change interrupts queue SDA/SCL snapshots from one port read. The decoder records 7-bit addresses, direction, up to 16 data bytes, NACK position, truncation, and repeated START boundaries. History holds the latest 32 address phases; a repeated START ends one phase and starts another. Traffic to 0x3C on the observed bus is retained because the OLED is physically separate.
 
-- Phase 1: basic register-mapped GPIO read/write
-- Phase 2: direction control, status, and device identity
-- Phase 3: interrupt-driven behavior for switch/button changes
+Commands:
 
-### Why This Module Matters
+| Command | Action |
+|---|---|
+| `r` | Clear history and arm while the observed bus is idle |
+| `s` or either button | Pause; discard an unfinished address phase |
+| `n` / `p` or buttons | Browse captured phases while paused |
 
-This module demonstrates practical embedded design patterns:
+Start with the traffic source stopped, send `r`, then start the source. After `s`, send `n` or `p` to display the selected packet. OLED shows the first eight data bytes; Serial prints all sixteen stored bytes. Arming while SDA/SCL is low is refused; wait for idle and retry.
 
-- I2C slave implementation
-- Register-mapped peripheral interfaces
-- Hardware abstraction through software-defined registers
-- Verification workflows using the I2C and logic analyzer modules
+Packet flags are hexadecimal: `01` NACK, `02` payload truncated, `04` ended by repeated START, `08` unsupported 10-bit address header, `10` incomplete byte. `NAK 0` means address NACK, `1..16` identifies a stored data byte, and `255` means none or beyond stored payload (check the NACK flag). A final read-byte NACK is normally intentional.
 
----
+Queue overflow stops capture and reports edge loss. Completed phases before the loss remain available. This detects queue exhaustion; it cannot detect every transition that hardware missed at excessive bus speed. This is an educational sniffer, without 10-bit-address decoding, glitch filtering, packet timestamps, or a guaranteed 100/400 kHz capture rate.
 
-## Shared Setup Notes
+## Mode 2: logic analyzer
 
-### Arduino IDE Workflow
+| Channel | CH0 | CH1 | CH2 | CH3 | CH4 | CH5 | CH6 | CH7 |
+|---|---|---|---|---|---|---|---|---|
+| Uno pin | D2 | D3 | D4 | D5 | D6 | D7 | A0 | A1 |
 
-1. Open the target sketch.
-2. Select board: Arduino Uno.
-3. Select the correct serial port.
-4. Upload.
-5. Use Serial Monitor at 115200 baud when serial control/debug is needed.
+OLED uses D8/D9 and GND. Inputs are high impedance; provide defined external levels. See [input voltage and loading constraints](docs/parts-and-constraints.md).
 
-### Library Summary
+Timer1 schedules nominal 10 µs intervals. The 512-byte state ring reconstructs 16-bit sample ticks, including rollover, instead of storing redundant timestamps. A complete capture contains **100 samples before the trigger and 412 from the trigger onward**: one trigger sample plus 411 subsequent samples. Trigger edges before 100 samples of history are ignored. Relative times range from −1000 to +4110 µs; first-to-last span is 5.11 ms.
 
-- I2C Analyzer: Adafruit GFX, Adafruit SSD1306
-- Logic Analyzer: U8g2
+| Command | Action |
+|---|---|
+| `l` | Live state display, about 10 updates/s |
+| `r` / `a` | Clear and arm a new burst |
+| `t` | Toggle rising/falling edge |
+| `c0` … `c7` | Choose trigger channel |
+| `e` | Toggle edge-triggered/automatic capture |
+| `n` / `p` | Browse a complete capture |
+| `d` | Export a complete capture as CSV: index, relative µs, hexadecimal state |
 
-## Documentation Direction
+Send configuration commands first, then `r`. With edge triggering disabled, capture completes automatically after 512 samples. With no suitable edge, arming times out after one second. An edge too near the deadline also times out if its post-trigger samples cannot finish. Timing overruns discard the buffer and produce an explicit error.
 
-This root README now serves as the primary project document with consolidated module information.
+During a burst, interrupts are disabled to avoid Timer0/UART jitter; serial input may be lost, buttons are not serviced, and Arduino `millis()`/`micros()` do not track elapsed capture time. Do not send commands until completion/timeout. Timer1 belongs exclusively to capture, so Servo and Timer1 PWM cannot be added concurrently. This is digital state capture and sample browsing, not an analog oscilloscope or a graphical waveform renderer.
+
+## Mode 3: external GPIO peripheral
+
+The peripheral Uno is an I2C target at **0x20** on A4/A5. Its separate D8/D9 bus controls two PCF8574A devices. Wire callbacks access cached registers only; all downstream transfers occur in `loop()`.
+
+| Connection | Wiring |
+|---|---|
+| Host SDA/SCL | Host A4/A5 → peripheral A4/A5 |
+| Expander SDA/SCL | Peripheral D8/D9 → both PCF SDA/SCL |
+| Bank 0 address straps | A2=GND, A1=GND, A0=GND → 0x38 |
+| Bank 1 address straps | A2=GND, A1=GND, A0=VCC → 0x39 |
+| Optional expander interrupt | Both PCF INT outputs → peripheral D3 with pull-up |
+| Host interrupt | Peripheral D2 → host D2 with pull-up |
+| Reference and power | Common GND; regulated 5 V for Unos/PCFs; decouple each PCF |
+
+Provide external SDA/SCL pull-ups on **each separate bus**. Keep the two buses electrically separate. Do not connect independently powered 5 V outputs together; share grounds and establish a suitable power arrangement.
+
+The host defaults to **10 kHz** so the I2C analyzer can observe it. It configures the AVR TWI prescaler explicitly: `Wire.setClock(10000)` alone cannot represent 10 kHz at 16 MHz with prescaler 1. Set `HOST_I2C_CLOCK_HZ=100000UL` for normal 100 kHz operation without this software sniffer. The expander software bus always remains below 100 kHz.
+
+Register addresses:
+
+| Address | Register | Access and reset |
+|---|---|---|
+| 0x00 / 0x01 | GPIO0 / GPIO1 output latch | R/W, 0x00 |
+| 0x02 / 0x03 | GPIO0 / GPIO1 input snapshot | Read-only; last successful sample |
+| 0x04 / 0x05 | Direction0 / Direction1 | R/W, 0xFF; **1=input/released, 0=output** |
+| 0x06 | Status | Read-only; bit 0 enabled, bit 1 IRQ asserted, bit 2 downstream bus error |
+| 0x07 | Control | R/W, 0x01; bit 0 enables outputs/input-change detection |
+| 0x08 | Interrupt status | Bit 0 bank 0 changed, bit 1 bank 1 changed; **write one to clear** |
+| 0x09 | Interrupt enable | R/W, 0x00; bits 0/1 enable host IRQ for each bank |
+| 0x0A | Device ID | Read-only, 0x42 |
+
+Writing control 0 releases all PCF outputs at the next service pass and clears pending interrupts. For enabled ports, the written PCF byte is `output | direction`: an input must be written high. A PCF high output is weak/quasi-bidirectional, not a general-purpose push-pull high driver.
+
+Write `[register, value...]` to update consecutive registers. Write `[register]` to select a read address, then request **one byte**; repeated START and STOP-separated reads both work. The pointer increments after each byte and wraps at 256; reserved addresses read zero and ignore writes. Read-only registers cannot be overwritten. Burst reads are not supported.
+
+Writes are acknowledged when cached; physical outputs apply asynchronously. Inputs are refreshed after at most a 5 ms scheduling interval **plus transfer time and host interrupt service time** under normal load. Polling is accelerated when the optional PCF INT line is low. Read status before trusting cached inputs: NACK/timeouts set bit 2 and preserve the last good value; reconnection retries the output configuration. There is no event counter, pulse-width guarantee, switch debounce, or guarantee of capturing an input pulse that changes back between samples.
+
+Changes on input-configured bits latch the bank status even when that bank's IRQ is masked. Enabling a bank with pending status asserts the active-low, open-drain host interrupt; clear status to release it. New inputs after startup, reconnection, or direction changes establish a baseline rather than a spurious edge. The host example demonstrates lower-nibble outputs, upper-nibble switches on bank 0, bank 1 inputs, device ID checks, status checks, and interrupt acknowledgment.
+
+## Verification
+
+```sh
+python3 scripts/test.py
+python3 scripts/verify_builds.py
+```
+
+The first command exercises production decoding/capture/register code with mocked I/O. The second compiles all four sketches, both display heights, and both host rates; checks a 512-byte minimum static SRAM reserve; and checks the linked logic-capture instruction budget. Use `--libraries PATH` for a U8g2 library outside the Arduino sketchbook. See [validation results and bench procedure](docs/validation.md) for exact environment details and limitations.

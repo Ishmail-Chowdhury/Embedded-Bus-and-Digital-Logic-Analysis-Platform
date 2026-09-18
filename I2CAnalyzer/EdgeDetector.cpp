@@ -13,11 +13,11 @@ Event detectEdge(const BusState& state)
 {
     Event event = NONE;
 
-    if (previousSDA && !state.sda && state.scl)
+    if (previousSDA && !state.sda && previousSCL && state.scl)
     {
         event = START;
     }
-    else if (!previousSDA && state.sda && state.scl)
+    else if (!previousSDA && state.sda && previousSCL && state.scl)
     {
         event = STOP;
     }

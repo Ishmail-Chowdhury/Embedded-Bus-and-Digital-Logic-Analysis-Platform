@@ -1,34 +1,19 @@
-#ifndef GPIO_CONTROLLER_H
-#define GPIO_CONTROLLER_H
-
+#pragma once
 #include <Arduino.h>
-#include <Wire.h>
+#include "expander_bus.h"
 
 class GPIOController {
-  public:
+public:
     GPIOController();
     void begin();
-
-    void setGPIO0(uint8_t value);
-    void setGPIO1(uint8_t value);
-    uint8_t readGPIO0() const;
-    uint8_t readGPIO1() const;
-
-    void setDirection0(uint8_t mask);
-    void setDirection1(uint8_t mask);
-    uint8_t getDirection0() const;
-    uint8_t getDirection1() const;
-
-    void updateInputRegisters();
-
-  private:
-    uint8_t gpio0Direction_;
-    uint8_t gpio1Direction_;
-    uint8_t gpio0Output_;
-    uint8_t gpio1Output_;
-
-    uint8_t readPort(uint8_t address) const;
-    void writePort(uint8_t address, uint8_t value) const;
+    // Only called from loop(), never from a Wire callback.
+    bool apply(uint8_t bank, uint8_t output, uint8_t direction, bool enabled);
+    bool read(uint8_t bank, uint8_t& value);
+    static uint8_t portValue(uint8_t output, uint8_t direction, bool enabled) {
+        return enabled ? (output | direction) : 0xFF;
+    }
+private:
+    ExpanderBus bus_;
+    uint8_t applied_[2];
+    bool valid_[2];
 };
-
-#endif
