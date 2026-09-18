@@ -1,5 +1,7 @@
 #include <cassert>
 #include <cstdio>
+#include <cstring>
+#include <vector>
 #include "capture.h"
 #include "edge_detector.h"
 #include "bit_decoder.h"
@@ -7,6 +9,23 @@
 #include "ring_buffer.h"
 #include "config.h"
 #include "bus_filter.h"
+#include "fast_capture.h"
+static std::vector<Packet> decoded;
+static void collect(const Packet& p) { decoded.push_back(p); }
+static uint8_t* raw;
+static uint16_t rawLength;
+static void sample(bool sda, bool scl) {
+    assert(rawLength < FAST_CAPTURE_BYTES * 2);
+    raw[rawLength / 2] |= ((sda ? 1 : 0) | (scl ? 2 : 0)) << ((rawLength & 1) ? 0 : 4);
+    ++rawLength;
+}
+static void rawByte(uint8_t value, bool ack = true) {
+    for (uint8_t mask = 0x80; mask; mask >>= 1) {
+        const bool bit = value & mask;
+        sample(bit, false); sample(bit, true); sample(bit, false);
+    }
+    sample(!ack, false); sample(!ack, true); sample(!ack, false);
+}
 static void pins(bool sda, bool scl) { decodeBusState({sda, scl}); }
 static void start() { pins(true, false); pins(true, true); pins(false, true); pins(false, false); }
 static void stop() { pins(false, false); pins(false, true); pins(true, true); }
@@ -73,5 +92,26 @@ int main() {
     filter.reset(8); filter.push({false, true, 0xFFFFFFFC}, accepted);
     assert(filter.settle(4, accepted) && accepted.atUs == 0xFFFFFFFC);
     filter.reset(0); assert(filter.push({false, false, 1}, accepted));
+    raw = packetScratch(); rawLength = 0;
+    sample(false, true); sample(false, false); rawByte(0x40); rawByte(0x5A);
+    sample(false, false); sample(false, true); sample(true, true);
+    const uint16_t restartTime = rawLength;
+    sample(false, true); sample(false, false); rawByte(0x41); rawByte(0xA5, false);
+    uint8_t original[FAST_CAPTURE_BYTES]; memcpy(original, raw, sizeof(original));
+    setPacketSink(collect);
+    decodeFastBus(rawBusCapture(), rawLength);
+    assert(decoded.size() == 2 && packetCount() == 0);
+    assert(decoded[0].address == 0x20 && decoded[0].data[0] == 0x5A && decoded[0].flags == 0);
+    assert(decoded[1].startUs == restartTime && decoded[1].read && decoded[1].data[0] == 0xA5);
+    assert(decoded[1].flags == (PACKET_NACK | PACKET_INCOMPLETE));
+    assert(memcmp(original, rawBusCapture(), sizeof(original)) == 0);
+    decoded.clear(); decodeFastBus(raw, 0); decodeFastBus(nullptr, 10);
+    decodeFastBus(raw, FAST_CAPTURE_BYTES * 2 + 1); assert(decoded.empty());
+    raw[511] = 0x21;
+    BusState lastEven = fastBusState(raw, 1022), lastOdd = fastBusState(raw, 1023);
+    assert(!lastEven.sda && lastEven.scl && lastEven.atUs == 1022);
+    assert(lastOdd.sda && !lastOdd.scl && lastOdd.atUs == 1023);
+    setPacketSink(nullptr); initRingBuffer(); resetDecoder();
+    start(); byte(0x40); stop(); assert(packetCount() == 1);
     puts("PASS I2C: edge classification, ACK/NACK, repeated START, bounds, truncation, ring rollover");
 }

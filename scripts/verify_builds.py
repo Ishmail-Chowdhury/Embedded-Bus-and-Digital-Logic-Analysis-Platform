@@ -55,10 +55,11 @@ with tempfile.TemporaryDirectory(prefix='embedded-builds-') as tmp:
         ram = re.search(r'Global variables use (\d+) bytes', result.stdout)
         if not ram or int(ram[1]) > 1536:
             raise SystemExit('FAIL: cannot establish at least 512 bytes remaining SRAM')
-        if sketch == 'logic-analyzer':
-            elf = build / 'logic-analyzer.ino.elf'
+        if sketch in ('logic-analyzer', 'I2CAnalyzer'):
+            elf = build / (sketch + '.ino.elf')
             disassembly = build / 'capture.disasm'
             with disassembly.open('w') as out:
-                subprocess.run([args.avr_objdump, '-d', '-C', str(elf)], stdout=out, check=True)
-            subprocess.run([sys.executable, str(ROOT / 'scripts/check_timing.py'), str(disassembly)], check=True)
-print('PASS all builds, SRAM budgets, and logic capture CPU budgets')
+                subprocess.run([args.avr_objdump, '-d', '-z', '-C', str(elf)], stdout=out, check=True)
+            check = 'check_timing.py' if sketch == 'logic-analyzer' else 'check_fast_timing.py'
+            subprocess.run([sys.executable, str(ROOT / 'scripts' / check), str(disassembly)], check=True)
+print('PASS all builds, SRAM budgets, logic CPU budgets, and fast I2C sample cadence')

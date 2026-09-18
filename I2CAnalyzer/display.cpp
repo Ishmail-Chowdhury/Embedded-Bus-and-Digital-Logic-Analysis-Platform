@@ -20,6 +20,13 @@ void showCaptureStatus(bool capturing, bool overflowed) {
     display.drawString(0, 1, overflowed ? "EDGE LOSS!" : "r=arm s=pause");
     display.drawString(0, 2, "n/p browse");
 }
+void showFastStatus(bool complete) {
+    display.clear();
+    display.drawString(0, 0, "1MS/s EXPERIMENT");
+    display.drawString(0, 1, complete ? "1024 samples" : "Waiting START");
+    display.drawString(0, 2, "d=CSV x=decode");
+    display.drawString(0, 3, "f=arm r=slow");
+}
 void updateDisplay(int count, const Packet& packet, int selectedIndex) {
     display.clear();
     if (!count) { display.drawString(0, 0, "No packets"); return; }
@@ -35,6 +42,9 @@ void updateDisplay(int count, const Packet& packet, int selectedIndex) {
     }
     snprintf(line, sizeof(line), "FLAGS %02X NAK %u", packet.flags, packet.nackIndex);
     display.drawString(0, 3, line);
+    printPacket(packet);
+}
+void printPacket(const Packet& packet) {
     Serial.print(F("START_us=")); Serial.print(packet.startUs);
     Serial.print(packet.tenBit ? F(" 10-bit ") : F(" 7-bit "));
     Serial.print(F("ADDR=0x")); Serial.print(packet.address, HEX);

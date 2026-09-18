@@ -9,12 +9,12 @@ I have confirmed that physical operation is working as expected on my hardware. 
 - I keep each analyzer's OLED on a separate software-I2C connection: **SDA D8, SCL D9**. The I2C analyzer observes A4/A5 without adding display traffic to that bus.
 - I connect the peripheral's expanders through **SDA D8, SCL D9**, on a bus separate from the host A4/A5 link. These pins are on a different board from the analyzer OLED.
 - I configure the **PCF8574A addresses as 0x38 and 0x39** with the straps below.
-- I separate I2C capture from packet browsing. OLED/Serial packet rendering happens when paused. I use a conservative software-sniffer target of **10 kHz or slower**, with SCL high/low each at least 50 µs.
+- I separate I2C capture from packet browsing. OLED/Serial packet rendering happens when paused. I use a conservative software-sniffer target of **10 kHz or slower**, with SCL high/low each at least 50 µs. A separate experimental 1 MS/s burst mode supports short faster-bus investigations.
 - I configure logic capture as a nominal **100 kS/s burst**, with a one-second maximum arm/capture window. Every arm starts fresh; `a` and `r` are aliases. Display updates and serial commands pause during the burst.
 
 ## Build and upload
 
-Use Arduino AVR Boards and select **Arduino Uno**. Install **U8g2** for both analyzer sketches (U8x8 text mode); Adafruit GFX/SSD1306 are no longer needed. Wire is supplied by the AVR core. I validated the builds with AVR core 1.8.8 and U8g2 2.36.18.
+Use Arduino AVR Boards and select **Arduino Uno**. Install **U8g2** for both analyzer sketches (U8x8 text/tile mode); Adafruit GFX/SSD1306 are no longer needed. Wire is supplied by the AVR core. I validated the builds with AVR core 1.8.8 and U8g2 2.36.18.
 
 Open and upload one of:
 
@@ -45,15 +45,26 @@ Commands:
 | `r` | Clear history and arm while the observed bus is idle |
 | `s` or either button | Pause; discard an unfinished address phase |
 | `n` / `p` or buttons | Browse captured phases while paused |
-| `g` | Toggle the optional 8 µs observed-state filter while paused; applies on next arm |
+| `g` | Toggle the optional 8 µs observed-state filter while paused; applies on next slow arm |
+| `f` | While paused, replace history with a START-triggered experimental 1 MS/s burst |
+| `d` | Export the fast burst as raw SDA/SCL CSV |
+| `x` | Decode the fast burst to Serial, preserving its raw samples |
 
 Start with the traffic source stopped, send `r`, then start the source. After `s`, send `n` or `p` to display the selected packet. OLED shows the first eight data bytes; Serial prints all sixteen stored bytes. Arming while SDA/SCL is low is refused; wait for idle and retry.
 
-Packet flags are hexadecimal: `01` NACK, `02` payload truncated, `04` ended by repeated START, `08` unresolved 10-bit read address, `10` incomplete byte. `NAK 0` means either address byte was NACKed, `1..16` identifies a stored data byte, and `255` means none or beyond stored payload (check the NACK flag). A final read-byte NACK is normally intentional.
+Packet flags are hexadecimal: `01` NACK, `02` payload truncated, `04` ended by repeated START, `08` unresolved 10-bit read address, `10` incomplete byte or phase cut off at the fast capture boundary. `NAK 0` means either address byte was NACKed, `1..16` identifies a stored data byte, and `255` means none or beyond stored payload (check the NACK flag). A final read-byte NACK is normally intentional.
 
 Queue overflow stops capture and reports edge loss. Completed phases before the loss remain available. This detects queue exhaustion; it cannot detect every transition that hardware missed at excessive bus speed. I timestamp queued observations with `micros()` before decoding. Serial prints `START_us` relative to arming, with 4 µs granularity and interrupt-service latency; timestamps wrap after about 71.6 minutes. Ten-bit reads resolve the address selected by the preceding acknowledged write-address phase across repeated START; a missing/mismatched selection is flagged.
 
 The optional filter rejects observed combined SDA/SCL states lasting less than 8 µs. It is off by default, preserves accepted observations' original timestamps, and can remove legitimate bus states shorter than its threshold. It is not a nanosecond electrical spike filter. Timestamp storage reduces history to 16 packets and the edge queue to 31 usable entries. Continuous 100/400 kHz capture is not guaranteed.
+
+### Experimental faster I2C capture
+
+I use `f` while paused and with the source idle, then start the source within one second. This captures 1,024 simultaneous SDA/SCL samples at nominal 1 µs intervals, replacing packet history with a packed 512-byte raw buffer. The linked AVR sampling loop is checked for exactly 16 CPU cycles between port reads. First-to-last span is 1.023 ms; acquisition occupies about 1.024 ms after START detection. Long transfers or clock stretching can extend beyond this window.
+
+`d` exports `sample,relative_us,sda,scl`. `x` runs the packet decoder after acquisition and prints each phase directly to Serial without overwriting the raw capture. The first START occurred before sample zero, so its reported `START_us=0` is approximate; subsequent timestamps are relative to the first sample. An address phase cut off at the end is flagged `10` if an address was decoded. An unfinished address byte produces no packet. The 8 µs filter applies only to slow capture. `f` replaces the burst; `r` clears it and returns to slow capture.
+
+This mode is experimental for short 100 kHz investigations. I have checked software behavior and instruction cadence, but have not qualified trigger latency or decode accuracy on hardware. A 400 kHz Fast-mode bus can have a 0.6 µs SCL high period, shorter than this sampling interval, so this mode cannot guarantee 400 kHz capture. See the [NXP timing limits](https://cache.nxp.com/docs/en/user-guide/UM10204.pdf). It also cannot prove that no short physical transition went unseen. Interrupts, OLED updates and serial commands pause during the bounded START wait and acquisition; Arduino timekeeping loses this interval. Timer1 belongs exclusively to this mode.
 
 ## Mode 2: logic analyzer
 
@@ -86,12 +97,11 @@ During a burst, interrupts are disabled to avoid Timer0/UART jitter; serial inpu
 
 For pulse measurements, select `cN`, browse to a sample within the pulse, and press `m`. Complete pulses report a sampled width at 10 µs resolution; pulses clipped by either capture boundary report a lower bound (`>=`) based only on observed intervals. This measures captured pulses and does not guarantee detection of sub-sample pulses.
 
-
 ### Slow analog capture
 
 I use `o` for a separate analog snapshot on **A2**, referenced to **AVCC**. It replaces the digital capture, reuses the same 512-byte buffer, and records 256 ten-bit samples. The ADC runs freely at 125 kHz; after discarding its extended first conversion, samples are nominally 104 µs apart (about 9.615 kS/s, a 26.52 ms first-to-last span). The OLED plots the waveform and `d` exports `index,relative_us,adc10`. Values are raw 0–1023 counts; voltage conversion needs the actual measured AVCC reference. `w` redraws the analog view, `r` returns to digital capture, and `l` returns to live digital monitoring.
 
-This mode is for slow, low-voltage signals within 0–AVCC, with a common ground. It has no probe attenuation, input protection, AC coupling, or analog anti-alias filter. It does not run concurrently with digital acquisition. Interrupts and serial input pause during the roughly 27 ms acquisition, and Arduino elapsed-time functions lose that interval. I treat the configured ADC rate as nominal until measured against a reference instrument.
+This mode is for slow, low-voltage signals within 0–AVCC, with a common ground and a source impedance of about 10 kΩ or less for ADC settling. I follow the [Microchip ADC requirements](https://ww1.microchip.com/downloads/en/devicedoc/atmel-7810-automotive-microcontrollers-atmega328p_datasheet.pdf). It has no probe attenuation, input protection, AC coupling, or analog anti-alias filter. It does not run concurrently with digital acquisition. Interrupts and serial input pause during the roughly 27 ms acquisition, and Arduino elapsed-time functions lose that interval. I treat the configured ADC rate as nominal until measured against a reference instrument.
 
 ## Mode 3: external GPIO peripheral
 
@@ -109,7 +119,7 @@ I expose the peripheral Uno as an I2C target at **0x20** on A4/A5. Its separate 
 
 Provide external SDA/SCL pull-ups on **each separate bus**. Keep the two buses electrically separate. Do not connect independently powered 5 V outputs together; share grounds and establish a suitable power arrangement.
 
-The host defaults to **10 kHz** so the I2C analyzer can observe it. It configures the AVR TWI prescaler explicitly: `Wire.setClock(10000)` alone cannot represent 10 kHz at 16 MHz with prescaler 1. Set `HOST_I2C_CLOCK_HZ=100000UL` for normal 100 kHz operation without this software sniffer. The expander software bus always remains below 100 kHz.
+The host defaults to **10 kHz** so the I2C analyzer can observe it. It configures the AVR TWI prescaler explicitly: `Wire.setClock(10000)` alone cannot represent 10 kHz at 16 MHz with prescaler 1. Set `HOST_I2C_CLOCK_HZ=100000UL` for normal 100 kHz operation. The continuous sniffer requires the slower setting; the fast burst is experimental. The expander software bus always remains below 100 kHz.
 
 Register addresses:
 
@@ -138,7 +148,7 @@ Accepted, debounced changes on input-configured bits latch the bank status even 
 
 ## Firmware extensions
 
-I am extending the working hardware configuration through tested firmware stages. Burst reads, configurable switch debounce, per-pin event counters, timestamped 10-bit I2C decoding, optional observed-state filtering, OLED waveform browsing, sampled pulse-width measurements, and a separate A2 analog viewer are implemented. I record build and regression results for these additions in [validation](docs/validation.md); my earlier hardware confirmation applies to the configuration before these extensions.
+I extended the working hardware configuration through tested firmware stages. Burst reads, configurable switch debounce, per-pin event counters, timestamped 10-bit I2C decoding, optional observed-state filtering, OLED waveform browsing, sampled pulse-width measurements, a separate A2 analog viewer, and experimental fast I2C bursts are implemented. I record build and regression results for these additions in [validation](docs/validation.md); my earlier hardware confirmation applies to the configuration before these extensions.
 
 ## Verification
 
@@ -149,4 +159,4 @@ python3 scripts/test.py
 python3 scripts/verify_builds.py
 ```
 
-The first command exercises production decoding/capture/register code with mocked I/O. The second compiles all four sketches, both display heights, and both host rates; checks a 512-byte minimum static SRAM reserve; and checks the linked logic-capture instruction budget. Use `--libraries PATH` for a U8g2 library outside the Arduino sketchbook. See my [validation results and repeatable bench procedure](docs/validation.md) for the recorded results, environment, and scope of each check.
+The first command exercises production decoding/capture/register code with mocked I/O. The second compiles all four sketches, both display heights, and both host rates; checks a 512-byte minimum static SRAM reserve; and checks the linked logic-capture instruction budget and fast-I2C sample cadence. Use `--libraries PATH` for a U8g2 library outside the Arduino sketchbook. See my [validation results and repeatable bench procedure](docs/validation.md) for the recorded results, environment, and scope of each check.

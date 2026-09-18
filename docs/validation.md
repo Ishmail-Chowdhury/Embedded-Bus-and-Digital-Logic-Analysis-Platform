@@ -8,7 +8,18 @@ My hardware result is a functional confirmation. The numerical results recorded 
 
 ## Firmware extension results
 
-I have added coherent 1–32-byte register reads, configurable per-pin debounce, and sixteen saturating event counters. The regression suite covers bounce rejection, accepted rising/falling changes, counter saturation/clear, raw versus debounced inputs, stable read selection, burst bounds, and short-read handling. I also added capture-relative I2C timestamps, ten-bit address resolution across repeated START, a selectable 8 µs observed-state filter, and a 16-packet history sized for SRAM. Tests cover address NACK/context reset, timestamp preservation, short-glitch rejection, and timestamp wrap. I added tiled OLED waveforms with zoom/pan and sampled pulse-width measurements, including clipped-boundary lower bounds. Tests cover known widths across timestamp wrap, invalid channels/indexes, compressed transitions, and browser commands. I added a separate A2 analog snapshot using the existing buffer. Native tests cover ADC-value unpacking, waveform extrema, bounds, and digital-history invalidation; AVR builds check the acquisition implementation. These firmware additions have software/build validation; the physical-operation confirmation above refers to my earlier hardware configuration.
+I implemented the following extensions and validated their software behavior and Uno builds:
+
+| Extension | Regression coverage |
+|---|---|
+| Coherent 1–32-byte register reads | Stable read selection, register wrap, burst bounds, short-read handling |
+| Per-pin debounce and sixteen saturating counters | Bounce rejection, rising/falling changes, saturation/clear, raw/debounced inputs |
+| Timestamped 10-bit I2C decoding and optional 8 µs filter | Repeated-START address resolution, NACK/context reset, timestamp preservation/wrap, short-glitch rejection |
+| Tiled OLED digital waveforms and pulse measurements | Zoomed transition preservation, pulse widths, clipped-boundary lower bounds, invalid indexes, browser commands |
+| Separate A2 analog snapshot | ADC-value unpacking, waveform extrema/bounds, digital-history invalidation; AVR compilation of acquisition code |
+| Experimental fast I2C burst | Packed sample order, offline decode, timestamps, incomplete final phase, raw-data preservation, return to normal history; linked instruction cadence |
+
+My physical-operation confirmation above applies to the earlier configuration. These additions have software/build validation; the bench procedures below describe the remaining hardware regression and characterization.
 
 ## Recorded results
 
@@ -19,6 +30,7 @@ I have added coherent 1–32-byte register reads, configurable per-pin debounce,
 | Native regression tests | Five suites passed with UndefinedBehaviorSanitizer |
 | Static SRAM budget | Every build retains at least 512 bytes beyond static allocation |
 | Logic-capture CPU budget | Conservative bound of 137/160 cycles for both display configurations |
+| Fast-I2C sample cadence | Linked loop has 16 CPU cycles between both successive port reads |
 
 ## Firmware corrections
 
@@ -54,7 +66,7 @@ I used Arduino CLI 1.5.1, Arduino AVR Boards 1.8.8, AVR GCC 7.3.0, U8g2 2.36.18,
 python3 scripts/test.py
 
 # Default sketches, alternate display heights, alternate host clock,
-# static memory reserve, and linked AVR instruction budget:
+# static memory reserve, and linked AVR timing checks:
 python3 scripts/verify_builds.py --libraries /path/to/additional/libraries
 ```
 
@@ -76,8 +88,8 @@ I compiled all seven configurations successfully. The compiler reported unused p
 
 | Sketch / configuration | Flash bytes | Static SRAM bytes | Remaining SRAM bytes |
 |---|---:|---:|---:|
-| I2C analyzer, 128×32 | 12,550 | 1,297 | 751 |
-| I2C analyzer, 128×64 | 12,562 | 1,297 | 751 |
+| I2C analyzer, 128×32 | 13,688 | 1,453 | 595 |
+| I2C analyzer, 128×64 | 13,700 | 1,453 | 595 |
 | Logic analyzer, 128×64 | 14,156 | 1,405 | 643 |
 | Logic analyzer, 128×32 | 14,152 | 1,405 | 643 |
 | Peripheral | 4,640 | 332 | 1,716 |
@@ -86,9 +98,11 @@ I compiled all seven configurations successfully. The compiler reported unused p
 
 I require ≥512 bytes beyond static SRAM use in the verification script. That is a screening margin, not proof of worst-case runtime stack use. The analyzer display uses U8x8 without a framebuffer; firmware does not use Arduino `String` or dynamic capture allocation.
 
-I checked the linked AVR capture loop for both OLED configurations. Its conservative control-flow bound was **137/160 CPU cycles**, or **8.5625 µs of work within each 10 µs interval**. The check includes both sides of conditional branches and polling phase allowance. It excludes paths that terminate capture. Timer configuration is `/8`, CTC, `OCR1A=19`. Runtime checks reject a late timer phase or work extending into the next deadline.
+I checked the linked AVR logic-capture loop for both OLED configurations. Its conservative control-flow bound was **137/160 CPU cycles**, or **8.5625 µs of work within each 10 µs interval**. The check includes both sides of conditional branches and polling phase allowance. It excludes paths that terminate capture. Timer configuration is `/8`, CTC, `OCR1A=19`. Runtime checks reject a late timer phase or work extending into the next deadline.
 
 This establishes CPU-budget feasibility for these exact builds. It does not measure oscillator error, metastability, pin loading or physical sample timing. Port D and port C are separate reads (one instruction apart in this build), so the eight channels are not perfectly simultaneous.
+
+For the experimental fast-I2C mode, `check_fast_timing.py` verifies both sample intervals in the linked assembly loop at **16 cycles / 1 µs** on a 16 MHz CPU. This is a finite 1,024-sample burst with no interrupts during acquisition. It does not qualify START latency, electrical margins, continuous operation, or a guaranteed bus rate.
 
 ## Repeatable bench procedure
 
@@ -107,17 +121,21 @@ I keep this procedure as a reference for reproducing the setup and checking futu
 2. Verify ID read on the reference analyzer: `START 0x20/W ACK 0x0A ACK RESTART 0x20/R ACK 0x42 NACK STOP`.
 3. Observe the default 10 kHz host clock and the downstream clock below 100 kHz. Repeat host verification with `HOST_I2C_CLOCK_HZ=100000UL` when the software sniffer is disconnected or paused.
 4. Check bank 0 P0–P3 against output latch 0x05: P0/P2 released/high, P1/P3 low. P4–P7 remain inputs. The expected unloaded input byte is approximately 0xF5, subject to the actual connected circuit and valid thresholds.
-5. Ground and release each input switch. Verify input snapshots, correct bank bits in 0x08, active-low D2 IRQ and release after writing the pending mask to 0x08. Verify mask/unmask behavior and that output-only changes do not create input interrupts. Observe bounce rather than assuming one press equals one event.
+5. Ground and release each input switch. Verify input snapshots, correct bank bits in 0x08, active-low D2 IRQ and release after writing the pending mask to 0x08. Verify mask/unmask behavior and that output-only changes do not create input interrupts. With the default 20 ms debounce, verify short observed bounces do not change the debounced snapshot or counters. Confirm each accepted press and release increments its pin counter once; compare with raw registers 0x0C/0x0D and repeat with debounce disabled.
 6. Write control 0 and confirm outputs release on the next service pass and IRQ deasserts. Re-enable, verify the configured latch returns, and confirm no artificial startup interrupt. Attempts to write ID/input/status must have no effect.
 7. Disconnect each expander and hold downstream SDA or SCL low in a controlled test. Confirm upstream register reads remain responsive, status bit 2 asserts and old input data is marked stale. Reconnect/release and confirm retries recover without MCU reset. Verify host timeout recovery preserves 10 kHz after the upstream bus is released.
-8. Measure write-to-pin and input-to-IRQ latency under expected host traffic. There is no claimed hard bound under arbitrary upstream traffic, no pulse counter, and no switch debounce.
+8. Measure write-to-pin and input-to-IRQ latency under expected host traffic. There is no claimed hard bound under arbitrary upstream traffic; a pulse that returns between polls can still be missed.
+9. Read 1, 2 and 32 bytes from selected registers using repeated START and STOP-separated transactions. Verify counter byte order and snapshot coherence, unchanged read selection, counter clear masks, saturation at 65535, and independent IRQ acknowledgment.
 
 ### 3. I2C analyzer
 
 1. With the source idle, arm using `r`, then generate the device-ID sequence above at 10 kHz. Pause with `s` and browse. Expect two phases: 0x20 W containing 0x0A with repeated-START flag, then 0x20 R containing 0x42 with final-data NACK at position 1.
 2. Compare a long known stream against a reference analyzer. Verify no phantom OLED traffic, no missing address phases, latest-16 retention and payload truncation flags for >16-byte transfers.
 3. Test both buttons, held buttons, address NACK, clock stretching, incomplete transactions, START/repeated START/STOP timing and attaching with a busy bus. Rendering must occur only when paused.
-4. Qualify worst-case edge spacing and interrupt latency at the intended rate. If packets differ or overflow occurs, the rate is not accepted. Do not infer 100/400 kHz support from a successful slow-bus test.
+4. Generate known 10-bit write/read transactions with repeated START and compare resolved addresses and flags. Compare START timestamps with the reference and exercise the optional filter with known short/long states.
+5. Qualify worst-case edge spacing and interrupt latency at the intended rate. If packets differ or overflow occurs, the rate is not accepted. Do not infer 100/400 kHz support from a successful slow-bus test.
+
+6. While paused and idle, send `f`, then start a short 100 kHz transfer within one second. Export with `d` and decode with `x`. Compare all 1,024 raw states, decoded bytes, START latency and sample spacing with a reference analyzer. Repeat at different source phases, with clock stretching, a transfer crossing the window boundary, a busy bus at arm and a no-START timeout. Confirm repeated `x` preserves raw data and `r` restores slow capture. A successful test does not establish 400 kHz support.
 
 ### 4. Logic analyzer
 
@@ -126,6 +144,7 @@ I keep this procedure as a reference for reproducing the setup and checking futu
 3. Disable edge triggering using `e` and arm; it should complete automatically in approximately 5.12 ms. Hold the selected signal constant with edge triggering enabled; it should time out after approximately one second and report no valid capture.
 4. Verify one-second timeout also handles an edge arriving too late to collect all post-trigger samples. Confirm `c` alone leaves the UI responsive outside a burst and repeated arms never mix history.
 5. Measure sampling jitter, channel-to-channel skew and input-loading effects. Re-run the CPU-budget check after changes to compiler, sampling code or configuration. Live OLED refresh is about 10 Hz and is not the acquisition rate.
+6. Use `w`, `+`/`-`, `n`/`p` and `v` to check waveforms on both display heights. Select known complete and boundary-clipped pulses with `cN` and `m`; compare widths and lower bounds with CSV and the reference instrument.
 
 ### 5. Analog viewer regression
 

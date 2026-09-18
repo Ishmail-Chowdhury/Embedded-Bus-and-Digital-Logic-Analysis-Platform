@@ -18,7 +18,7 @@ if sys.platform == 'darwin' and not extra_flags and 'CXX' not in os.environ:
         extra_flags += ['-isystem', str(headers)]
 P = 'ExternalGPIOPeripheral/peripheral/'
 SUITES = {
-    'i2c': ('I2CAnalyzer', ['I2CAnalyzer/' + f for f in ['capture.cpp', 'EdgeDetector.cpp', 'BitDecoder.cpp', 'PacketDecoder.cpp', 'RingBuffer.cpp']]),
+    'i2c': ('I2CAnalyzer', ['I2CAnalyzer/' + f for f in ['capture.cpp', 'EdgeDetector.cpp', 'BitDecoder.cpp', 'PacketDecoder.cpp', 'RingBuffer.cpp', 'fast_decoder.cpp']]),
     'logic': ('logic-analyzer', ['logic-analyzer/capture_buffer.cpp', 'logic-analyzer/trigger.cpp', 'logic-analyzer/measurements.cpp', 'logic-analyzer/analog_waveform.cpp']),
     'peripheral': (P, [P + f for f in ['gpio_controller.cpp', 'registers.cpp', 'interrupt_controller.cpp']]),
     'host': ('ExternalGPIOPeripheral/host', []),
@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='embedded-tests-') as tmp:
     for name, (include, sources) in SUITES.items():
         exe = str(Path(tmp) / name)
         cmd = [os.environ.get('CXX', 'c++'), *extra_flags, '-std=c++11', '-Wall', '-Wextra', '-Werror',
-               '-fsanitize=' + os.environ.get('SANITIZERS', 'undefined'), '-fno-omit-frame-pointer', '-g',
+               '-fsanitize=' + os.environ.get('SANITIZERS', 'undefined'), '-fno-sanitize-recover=all', '-fno-omit-frame-pointer', '-g',
                '-Itests/stubs', '-I' + include, 'tests/stubs/Arduino.cpp',
                'tests/test_' + name + '.cpp', *sources, '-o', exe]
         subprocess.run(cmd, cwd=ROOT, check=True)
