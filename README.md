@@ -106,14 +106,22 @@ Register addresses:
 | 0x08 | Interrupt status | Bit 0 bank 0 changed, bit 1 bank 1 changed; **write one to clear** |
 | 0x09 | Interrupt enable | R/W, 0x00; bits 0/1 enable host IRQ for each bank |
 | 0x0A | Device ID | Read-only, 0x42 |
+| 0x0B | Debounce interval | R/W, 20 ms reset; 0 bypasses debounce, maximum 255 ms |
+| 0x0C / 0x0D | Raw GPIO0 / GPIO1 | Read-only, latest successful unfiltered sample |
+| 0x0E / 0x0F | Counter clear masks | Write 1 for each pin counter to clear; reads zero |
+| 0x10–0x2F | Sixteen event counters | Read-only, little-endian 16-bit, bank 0 P0 first through bank 1 P7 |
 
 Writing control 0 releases all PCF outputs at the next service pass and clears pending interrupts. For enabled ports, the written PCF byte is `output | direction`: an input must be written high. A PCF high output is weak/quasi-bidirectional, not a general-purpose push-pull high driver.
 
-Write `[register, value...]` to update consecutive registers. Write `[register]` to select a read address, then request **one byte**; repeated START and STOP-separated reads both work. The pointer increments after each byte and wraps at 256; reserved addresses read zero and ignore writes. Read-only registers cannot be overwritten. Burst reads are not supported.
+Write `[register, value...]` to update consecutive registers. Write `[register]` to select a read address, then request **1–32 bytes**; repeated START and STOP-separated reads both work. I return a coherent snapshot of consecutive registers, including complete two-byte counters. The selected read address stays unchanged after a read because Wire does not report how many offered bytes the host consumed. Select the address before every new read; writes still advance through consecutive addresses. Address arithmetic wraps at 256, reserved addresses read zero, and read-only registers ignore writes.
 
-Writes are acknowledged when cached; physical outputs apply asynchronously. Inputs are refreshed after at most a 5 ms scheduling interval **plus transfer time and host interrupt service time** under normal load. Polling is accelerated when the optional PCF INT line is low. Read status before trusting cached inputs: NACK/timeouts set bit 2 and preserve the last good value; reconnection retries the output configuration. There is no event counter, pulse-width guarantee, switch debounce, or guarantee of capturing an input pulse that changes back between samples.
+Writes are acknowledged when cached; physical outputs apply asynchronously. Inputs are refreshed after at most a 5 ms scheduling interval **plus transfer time and host interrupt service time** under normal load. Polling is accelerated when the optional PCF INT line is low. Read status before trusting cached inputs: NACK/timeouts set bit 2 and preserve the last good value; reconnection retries the output configuration. I debounce each input independently: a changed level must remain the observed candidate for the configured interval before the input snapshot, interrupt status, and counter update. Each accepted rising or falling transition increments that pin's counter, saturating at 65535. Counter clear and interrupt acknowledgment are independent. Outputs track raw levels without generating input events. Startup, reconnect, disable/re-enable, direction changes, and debounce changes establish fresh baselines. The raw registers expose unfiltered samples. Pulses that change back between samples can still be missed.
 
-Changes on input-configured bits latch the bank status even when that bank's IRQ is masked. Enabling a bank with pending status asserts the active-low, open-drain host interrupt; clear status to release it. New inputs after startup, reconnection, or direction changes establish a baseline rather than a spurious edge. The host example demonstrates lower-nibble outputs, upper-nibble switches on bank 0, bank 1 inputs, device ID checks, status checks, and interrupt acknowledgment.
+Accepted, debounced changes on input-configured bits latch the bank status even when that bank's IRQ is masked. Enabling a bank with pending status asserts the active-low, open-drain host interrupt; clear status to release it. New inputs after startup, reconnection, or direction changes establish a baseline rather than a spurious edge. The host example demonstrates lower-nibble outputs, upper-nibble switches on bank 0, bank 1 inputs, device ID checks, status checks, and interrupt acknowledgment.
+
+## Firmware extensions
+
+I am extending the working hardware configuration through tested firmware stages. Burst reads, configurable switch debounce, and per-pin event counters are now implemented. I record build and regression results for these additions in [validation](docs/validation.md); my earlier hardware confirmation applies to the configuration before these extensions.
 
 ## Verification
 

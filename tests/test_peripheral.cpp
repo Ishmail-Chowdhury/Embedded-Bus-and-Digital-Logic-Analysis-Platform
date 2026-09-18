@@ -26,12 +26,13 @@ bool ExpanderBus::readPort(uint8_t address, uint8_t& value) {
 static void rx(std::initializer_list<uint8_t> bytes) {
     Wire.rx = bytes; receiveEvent(bytes.size()); assert(Wire.rx.empty());
 }
-static uint8_t tx() { Wire.tx.clear(); requestEvent(); assert(Wire.tx.size() == 1); return Wire.tx[0]; }
+static uint8_t tx() { Wire.tx.clear(); requestEvent(); assert(Wire.tx.size() == 32); return Wire.tx[0]; }
 int main() {
     interruptController.begin(); registerMap.begin(); registerMap.updateStatusFromInputs();
     assert(writes.size() == 2 && writes[0].value == 0xFF && writes[1].value == 0xFF);
     assert(registerMap.readRegister(REG_DIRECTION0) == 0xFF);
     assert(registerMap.readRegister(REG_CONTROL) == 1 && registerMap.readRegister(REG_STATUS) == STATUS_ENABLED);
+    rx({REG_DEBOUNCE_MS, 0}); registerMap.updateStatusFromInputs();
     const auto before = writes.size();
     rx({REG_DEVICE_ID}); assert(tx() == 0x42); // Register pointer-only write.
     rx({REG_GPIO0_OUTPUT, 0x55, 0xAA}); // Sequential cached writes.
@@ -67,5 +68,34 @@ int main() {
     registerMap.updateStatusFromInputs(); assert(registerMap.readRegister(REG_INTERRUPT_STATUS) == 0);
     rx({0xFF, 0xAA}); // Invalid register is safely ignored; pointer wraps as an 8-bit counter.
     rx({0xFE}); assert(tx() == 0); assert(tx() == 0);
+    // Burst snapshots stay coherent and reads keep the selected start.
+    rx({REG_EVENT_COUNTERS}); tx();
+    const auto snapshot = Wire.tx;
+    tx(); assert(Wire.tx == snapshot);
+    rx({REG_CONTROL, 1}); rx({REG_DEBOUNCE_MS, 20});
+    rx({REG_DIRECTION0, 0xFF}); rx({REG_COUNTER_CLEAR0, 0xFF});
+    inputs[0] = 0xFF; registerMap.updateStatusFromInputs();
+    fakeMicros = 100000;
+    inputs[0] = 0xFE; registerMap.updateStatusFromInputs();
+    assert(registerMap.readRegister(REG_RAW_INPUT0) == 0xFE);
+    assert(registerMap.readRegister(REG_GPIO0_INPUT) == 0xFF);
+    fakeMicros += 10000; inputs[0] = 0xFF; registerMap.updateStatusFromInputs();
+    fakeMicros += 5000; inputs[0] = 0xFE; registerMap.updateStatusFromInputs();
+    fakeMicros += 19000; registerMap.updateStatusFromInputs();
+    assert(registerMap.readRegister(REG_EVENT_COUNTERS) == 0);
+    fakeMicros += 1000; registerMap.updateStatusFromInputs();
+    assert(registerMap.readRegister(REG_GPIO0_INPUT) == 0xFE);
+    assert(registerMap.readRegister(REG_EVENT_COUNTERS) == 1);
+    fakeMicros += 100000; registerMap.updateStatusFromInputs();
+    assert(registerMap.readRegister(REG_EVENT_COUNTERS) == 1);
+    inputs[0] = 0xFF; registerMap.updateStatusFromInputs();
+    fakeMicros += 20000; registerMap.updateStatusFromInputs();
+    assert(registerMap.readRegister(REG_EVENT_COUNTERS) == 2);
+    rx({REG_COUNTER_CLEAR0, 1}); assert(registerMap.readRegister(REG_EVENT_COUNTERS) == 0);
+    rx({REG_DEBOUNCE_MS, 0}); registerMap.updateStatusFromInputs();
+    for (unsigned i = 0; i < 65540; ++i) { inputs[0] ^= 1; registerMap.updateStatusFromInputs(); }
+    rx({REG_EVENT_COUNTERS}); tx(); assert(Wire.tx[0] == 255 && Wire.tx[1] == 255);
+    rx({REG_EVENT_COUNTERS, 0, 0}); tx(); // Read-only counters.
+    assert(registerMap.readRegister(REG_EVENT_COUNTERS) == 255);
     puts("PASS peripheral: callbacks, pointers, direction, read-only registers, IRQ/W1C, disable, NACK/recovery, concurrent writes");
 }

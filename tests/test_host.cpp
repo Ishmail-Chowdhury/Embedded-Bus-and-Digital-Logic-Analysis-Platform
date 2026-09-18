@@ -27,5 +27,14 @@ int main() {
     Wire.replies.push_back({0x11}); value = 0x55;
     assert(!readRegister(2, value) && value == 0x55);
     assert(!Wire.timeout && (TWSR & 3) == 1);
+    Wire.replies.clear();
+    uint8_t bytes[32] = {};
+    std::deque<uint8_t> reply;
+    for (uint8_t i = 0; i < 32; ++i) reply.push_back(i);
+    Wire.replies.push_back(reply);
+    assert(readRegisters(0x10, bytes, 32) && bytes[31] == 31);
+    Wire.replies.push_back({0xAA});
+    assert(!readRegisters(0x10, bytes, 32) && bytes[0] == 0 && bytes[31] == 31);
+    assert(!readRegisters(0, bytes, 0) && !readRegisters(0, bytes, 33));
     puts("PASS host: 10 kHz prescaler, repeated START, NACK, short reads, timeout prescaler recovery");
 }

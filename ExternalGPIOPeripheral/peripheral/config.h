@@ -18,7 +18,14 @@
 #define REG_INTERRUPT_ENABLE  0x09
 #define REG_DEVICE_ID         0x0A
 
-#define REGISTER_COUNT        0x0B
+#define REG_DEBOUNCE_MS        0x0B // 0 bypasses, reset 20 ms
+#define REG_RAW_INPUT0         0x0C
+#define REG_RAW_INPUT1         0x0D
+#define REG_COUNTER_CLEAR0     0x0E // Write-one bit mask per bank
+#define REG_COUNTER_CLEAR1     0x0F
+#define REG_EVENT_COUNTERS     0x10 // 16 little-endian saturating uint16 counters
+#define REGISTER_COUNT        0x30
+#define MAX_BURST_BYTES       32
 
 #define STATUS_ENABLED        0x01
 #define STATUS_INTERRUPT      0x02

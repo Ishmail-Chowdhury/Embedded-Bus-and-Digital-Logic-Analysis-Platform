@@ -6,6 +6,10 @@ I have confirmed that physical operation is working as expected on my hardware. 
 
 My hardware result is a functional confirmation. The numerical results recorded here are build sizes and a calculated CPU instruction budget; I have not included instrument readings for electrical margins, sampling jitter, or latency. I keep the detailed bench procedure below as a repeatable reference for future changes.
 
+## Firmware extension results
+
+I have added coherent 1–32-byte register reads, configurable per-pin debounce, and sixteen saturating event counters. The regression suite covers bounce rejection, accepted rising/falling changes, counter saturation/clear, raw versus debounced inputs, stable read selection, burst bounds, and short-read handling. These firmware additions have software/build validation; the physical-operation confirmation above refers to my earlier hardware configuration.
+
 ## Recorded results
 
 | Check | Result |
@@ -76,9 +80,9 @@ I compiled all seven configurations successfully. The compiler reported unused p
 | I2C analyzer, 128×64 | 11,280 | 1,412 | 636 |
 | Logic analyzer, 128×64 | 11,354 | 1,295 | 753 |
 | Logic analyzer, 128×32 | 11,342 | 1,295 | 753 |
-| Peripheral | 4,002 | 227 | 1,821 |
-| Host, 10 kHz | 5,100 | 404 | 1,644 |
-| Host, 100 kHz | 5,096 | 404 | 1,644 |
+| Peripheral | 4,640 | 332 | 1,716 |
+| Host, 10 kHz | 5,268 | 404 | 1,644 |
+| Host, 100 kHz | 5,264 | 404 | 1,644 |
 
 I require ≥512 bytes beyond static SRAM use in the verification script. That is a screening margin, not proof of worst-case runtime stack use. The analyzer display uses U8x8 without a framebuffer; firmware does not use Arduino `String` or dynamic capture allocation.
 

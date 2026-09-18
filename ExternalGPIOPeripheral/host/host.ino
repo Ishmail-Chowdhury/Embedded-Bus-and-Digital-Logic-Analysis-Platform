@@ -50,26 +50,34 @@ bool writeRegister(uint8_t reg, uint8_t value) {
     return ok;
 }
 
-bool readRegister(uint8_t reg, uint8_t& value) {
+bool readRegisters(uint8_t reg, uint8_t* values, uint8_t length) {
+    if (!values || !length || length > 32) return false;
     Wire.beginTransmission(PERIPHERAL_ADDRESS);
     Wire.write(reg);
     bool ok = Wire.endTransmission(false) == 0 && !Wire.getWireTimeoutFlag();
-    if (ok) ok = Wire.requestFrom(PERIPHERAL_ADDRESS, uint8_t(1)) == 1 && !Wire.getWireTimeoutFlag();
+    if (ok) ok = Wire.requestFrom(PERIPHERAL_ADDRESS, length) == length && !Wire.getWireTimeoutFlag();
     recoverTimeoutClock();
     if (!ok) {
         Serial.println(F("I2C read failed"));
         return false;
     }
-    value = static_cast<uint8_t>(Wire.read());
+    uint8_t snapshot[32];
+    for (uint8_t i = 0; i < length; ++i) {
+        if (!Wire.available()) return false;
+        snapshot[i] = static_cast<uint8_t>(Wire.read());
+    }
+    for (uint8_t i = 0; i < length; ++i) values[i] = snapshot[i];
     return true;
 }
+bool readRegister(uint8_t reg, uint8_t& value) { return readRegisters(reg, &value, 1); }
+
 
 void setup() {
     Serial.begin(115200);
     pinMode(2, INPUT_PULLUP); // Peripheral D2 interrupt output -> host D2.
     Wire.begin();
     configureBusClock();
-    Wire.setWireTimeout(25000, true);
+    Wire.setWireTimeout(50000, true); // A 32-byte read at 10 kHz takes about 30 ms.
     delay(500);
     uint8_t deviceId;
     if (!readRegister(REG_DEVICE_ID, deviceId) || deviceId != 0x42) {
@@ -93,7 +101,12 @@ void loop() {
         }
         if ((status & 0x02) && readRegister(REG_INTERRUPT_STATUS, pending)) {
             Serial.print(F("Changed banks=0x")); Serial.println(pending, HEX);
-            writeRegister(REG_INTERRUPT_STATUS, pending);
+            uint8_t counters[32];
+            if (readRegisters(0x10, counters, sizeof(counters))) {
+                Serial.print(F("Bank0 P4 events="));
+                Serial.println(uint16_t(counters[8]) | (uint16_t(counters[9]) << 8));
+                writeRegister(REG_INTERRUPT_STATUS, pending);
+            }
         }
     }
     delay(100);

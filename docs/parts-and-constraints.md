@@ -54,8 +54,8 @@ I have confirmed expected physical operation of the platform. I retain the follo
 | I2C passive observation | A4/A5 inputs; OLED isolated; queue captures port snapshots | Bus rate, START/STOP visibility and minimum edge spacing |
 | I2C packet semantics | ACK/NACK, repeated START, payload bounds, history wrap tested | Known transaction stream comparison |
 | PCF input/output behavior | `latch OR direction`; independent bus; ACK/timeouts and retry | Part suffix, address straps, physical levels and load current |
-| Register-mapped target | Persistent pointer; one-byte reads; cached callbacks; read-only registers | Repeated START transactions and clock stretching |
-| Input-change interrupt | Per-bank latch, masks, write-one-clear, released host line tested | Switch bounce, pulse loss, service latency and pull-up loading |
+| Register-mapped target | Selected start address; coherent 1–32-byte reads; cached callbacks; read-only registers | Repeated START transactions and clock stretching |
+| Input-change interrupt | Per-pin configurable debounce and saturating counters; bank IRQ masks/W1C; released host line | Debounce latency, missed sub-sample pulses and pull-up loading |
 | Missing/stuck device | Bounded software-SCL wait and host Wire timeout; stale data marked | Disconnect/reconnect and stuck SDA/SCL regression tests |
 
 I keep the sniffer target at 10 kHz, below the PCF/host 100 kHz capability. Pin-change hardware coalesces edges arriving while interrupts are masked; an overflow flag cannot prove that all physical edges were seen. Slow the host link for this analyzer, or use a separately qualified analyzer for 100/400 kHz traffic. The 100 kS/s logic sampler also does not guarantee recognition of pulses shorter than a sample interval or correct reconstruction of signals close to its sampling rate.

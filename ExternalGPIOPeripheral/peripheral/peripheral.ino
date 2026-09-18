@@ -19,9 +19,11 @@ void receiveEvent(int byteCount) {
 }
 
 void requestEvent() {
-    // One byte per request. Pointer survives STOP and repeated START.
-    Wire.write(registerMap.readRegister(registerPointer));
-    ++registerPointer;
+    // Wire does not tell onRequest how many bytes the host will clock out.
+    // Offer a coherent 32-byte window, and keep the selected start unchanged.
+    uint8_t bytes[MAX_BURST_BYTES];
+    registerMap.snapshot(registerPointer, bytes, sizeof(bytes));
+    Wire.write(bytes, sizeof(bytes));
 }
 
 void setup() {

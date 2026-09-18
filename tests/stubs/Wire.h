@@ -23,6 +23,7 @@ struct FakeWire {
     void onRequest(void (*)()) {}
     int available() { return rx.size(); }
     int read() { if (rx.empty()) return -1; const auto v = rx.front(); rx.pop_front(); return v; }
+    size_t write(const uint8_t* values, size_t length) { tx.insert(tx.end(), values, values + length); return length; }
     size_t write(uint8_t value) { tx.push_back(value); return 1; }
 };
 extern FakeWire Wire;
