@@ -8,7 +8,7 @@ My hardware result is a functional confirmation. The numerical results recorded 
 
 ## Firmware extension results
 
-I have added coherent 1–32-byte register reads, configurable per-pin debounce, and sixteen saturating event counters. The regression suite covers bounce rejection, accepted rising/falling changes, counter saturation/clear, raw versus debounced inputs, stable read selection, burst bounds, and short-read handling. I also added capture-relative I2C timestamps, ten-bit address resolution across repeated START, a selectable 8 µs observed-state filter, and a 16-packet history sized for SRAM. Tests cover address NACK/context reset, timestamp preservation, short-glitch rejection, and timestamp wrap. These firmware additions have software/build validation; the physical-operation confirmation above refers to my earlier hardware configuration.
+I have added coherent 1–32-byte register reads, configurable per-pin debounce, and sixteen saturating event counters. The regression suite covers bounce rejection, accepted rising/falling changes, counter saturation/clear, raw versus debounced inputs, stable read selection, burst bounds, and short-read handling. I also added capture-relative I2C timestamps, ten-bit address resolution across repeated START, a selectable 8 µs observed-state filter, and a 16-packet history sized for SRAM. Tests cover address NACK/context reset, timestamp preservation, short-glitch rejection, and timestamp wrap. I added tiled OLED waveforms with zoom/pan and sampled pulse-width measurements, including clipped-boundary lower bounds. Tests cover known widths across timestamp wrap, invalid channels/indexes, compressed transitions, and browser commands. These firmware additions have software/build validation; the physical-operation confirmation above refers to my earlier hardware configuration.
 
 ## Recorded results
 
@@ -18,7 +18,7 @@ I have added coherent 1–32-byte register reads, configurable per-pin debounce,
 | Uno compilation | All four sketches compile across seven configurations |
 | Native regression tests | Five suites passed with UndefinedBehaviorSanitizer |
 | Static SRAM budget | Every build retains at least 512 bytes beyond static allocation |
-| Logic-capture CPU budget | Conservative bound of 135/160 cycles for both display configurations |
+| Logic-capture CPU budget | Conservative bound of 137/160 cycles for both display configurations |
 
 ## Firmware corrections
 
@@ -78,15 +78,15 @@ I compiled all seven configurations successfully. The compiler reported unused p
 |---|---:|---:|---:|
 | I2C analyzer, 128×32 | 12,550 | 1,297 | 751 |
 | I2C analyzer, 128×64 | 12,562 | 1,297 | 751 |
-| Logic analyzer, 128×64 | 11,354 | 1,295 | 753 |
-| Logic analyzer, 128×32 | 11,342 | 1,295 | 753 |
+| Logic analyzer, 128×64 | 13,152 | 1,387 | 661 |
+| Logic analyzer, 128×32 | 13,148 | 1,387 | 661 |
 | Peripheral | 4,640 | 332 | 1,716 |
 | Host, 10 kHz | 5,268 | 404 | 1,644 |
 | Host, 100 kHz | 5,264 | 404 | 1,644 |
 
 I require ≥512 bytes beyond static SRAM use in the verification script. That is a screening margin, not proof of worst-case runtime stack use. The analyzer display uses U8x8 without a framebuffer; firmware does not use Arduino `String` or dynamic capture allocation.
 
-I checked the linked AVR capture loop for both OLED configurations. Its conservative control-flow bound was **135/160 CPU cycles**, or **8.4375 µs of work within each 10 µs interval**. The check includes both sides of conditional branches and polling phase allowance. It excludes paths that terminate capture. Timer configuration is `/8`, CTC, `OCR1A=19`. Runtime checks reject a late timer phase or work extending into the next deadline.
+I checked the linked AVR capture loop for both OLED configurations. Its conservative control-flow bound was **137/160 CPU cycles**, or **8.5625 µs of work within each 10 µs interval**. The check includes both sides of conditional branches and polling phase allowance. It excludes paths that terminate capture. Timer configuration is `/8`, CTC, `OCR1A=19`. Runtime checks reject a late timer phase or work extending into the next deadline.
 
 This establishes CPU-budget feasibility for these exact builds. It does not measure oscillator error, metastability, pin loading or physical sample timing. Port D and port C are separate reads (one instruction apart in this build), so the eight channels are not perfectly simultaneous.
 

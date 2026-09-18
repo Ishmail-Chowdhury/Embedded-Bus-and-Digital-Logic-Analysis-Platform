@@ -19,7 +19,7 @@ if sys.platform == 'darwin' and not extra_flags and 'CXX' not in os.environ:
 P = 'ExternalGPIOPeripheral/peripheral/'
 SUITES = {
     'i2c': ('I2CAnalyzer', ['I2CAnalyzer/' + f for f in ['capture.cpp', 'EdgeDetector.cpp', 'BitDecoder.cpp', 'PacketDecoder.cpp', 'RingBuffer.cpp']]),
-    'logic': ('logic-analyzer', ['logic-analyzer/capture_buffer.cpp', 'logic-analyzer/trigger.cpp']),
+    'logic': ('logic-analyzer', ['logic-analyzer/capture_buffer.cpp', 'logic-analyzer/trigger.cpp', 'logic-analyzer/measurements.cpp']),
     'peripheral': (P, [P + f for f in ['gpio_controller.cpp', 'registers.cpp', 'interrupt_controller.cpp']]),
     'host': ('ExternalGPIOPeripheral/host', []),
     'expander_bus': (P, [P + 'expander_bus.cpp']),

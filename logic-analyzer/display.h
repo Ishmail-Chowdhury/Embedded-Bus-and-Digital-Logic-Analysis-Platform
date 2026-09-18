@@ -12,3 +12,7 @@ void showCaptureSummary(uint16_t totalSamples, uint16_t preSamples, uint16_t pos
 void showSampleDetail(uint16_t sampleIndex, uint16_t totalSamples, const Sample& sample, uint16_t triggerTick);
 
 void showCaptureError(bool timeout);
+
+#include "measurements.h"
+void showWaveform(const CaptureBuffer& capture, uint16_t start, uint8_t samplesPerPixel, uint8_t firstChannel, uint16_t triggerTick);
+void showPulse(const PulseMeasurement& pulse, uint8_t channel);

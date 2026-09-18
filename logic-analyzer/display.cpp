@@ -57,3 +57,31 @@ void showCaptureError(bool timeout) {
     display.drawString(0, 1, "No valid capture");
     display.drawString(0, 3, "r=retry l=live");
 }
+
+void showWaveform(const CaptureBuffer& capture, uint16_t start, uint8_t samplesPerPixel, uint8_t firstChannel, uint16_t triggerTick) {
+    const int16_t triggerIndex = capture.findFirstTickAtOrAfter(triggerTick);
+    display.clear();
+    uint8_t tiles[120];
+    for (uint8_t row = 0; row < OLED_HEIGHT / 8; ++row) {
+        const uint8_t channel = firstChannel + row;
+        if (channel >= NUM_CHANNELS) break;
+        char label[2] = {char('0' + channel), 0};
+        display.drawString(0, row, label);
+        for (uint8_t x = 0; x < sizeof(tiles); ++x) {
+            const uint16_t index = start + uint16_t(x) * samplesPerPixel;
+            tiles[x] = waveformColumn(capture, channel, index, samplesPerPixel);
+            if (triggerIndex >= 0 && uint16_t(triggerIndex) >= index && uint16_t(triggerIndex) < index + samplesPerPixel)
+                tiles[x] |= 0x81;
+        }
+        display.drawTile(1, row, 15, tiles);
+    }
+}
+void showPulse(const PulseMeasurement& pulse, uint8_t channel) {
+    char line[17]; display.clear();
+    snprintf(line, sizeof(line), "CH%u %s pulse", channel, pulse.high ? "HIGH" : "LOW");
+    display.drawString(0, 0, line);
+    snprintf(line, sizeof(line), "%s%lu us", (pulse.leftClipped || pulse.rightClipped) ? ">=" : "~", static_cast<unsigned long>(pulse.widthUs));
+    display.drawString(0, 1, line);
+    display.drawString(0, 2, (pulse.leftClipped || pulse.rightClipped) ? "Boundary clipped" : "10 us resolution");
+    display.drawString(0, 3, "n/p sample w=wave");
+}

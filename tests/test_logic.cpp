@@ -14,6 +14,8 @@ void showArmedStatus(uint8_t, uint16_t, uint32_t, const TriggerConfig&) {}
 void showCaptureSummary(uint16_t, uint16_t, uint16_t, const TriggerConfig&) {}
 void showSampleDetail(uint16_t, uint16_t, const Sample&, uint16_t) {}
 void showCaptureError(bool) {}
+void showWaveform(const CaptureBuffer&, uint16_t, uint8_t, uint8_t, uint16_t) {}
+void showPulse(const PulseMeasurement&, uint8_t) {}
 int main() {
     for (uint8_t ch = 0; ch < 8; ++ch) {
         const uint8_t mask = 1U << ch;
@@ -51,5 +53,25 @@ int main() {
     loop(); assert(awaitingChannel); // A lone c must not block.
     handleCommand('7'); assert(!awaitingChannel && triggerConfig.channel == 7);
     handleCommand('c'); handleCommand('l'); assert(live && !awaitingChannel);
+    CaptureBuffer pulses;
+    for (uint16_t i = 0; i < 10; ++i) pulses.push({uint16_t(65530 + i), uint8_t(i >= 2 && i < 7)});
+    PulseMeasurement pulse;
+    assert(measurePulse(pulses, 0, 4, pulse));
+    assert(pulse.high && pulse.first == 2 && pulse.end == 7 && pulse.widthUs == 50);
+    assert(!pulse.leftClipped && !pulse.rightClipped);
+    assert(measurePulse(pulses, 0, 0, pulse) && pulse.leftClipped && pulse.widthUs == 10);
+    assert(measurePulse(pulses, 0, 9, pulse) && pulse.rightClipped && pulse.widthUs == 20);
+    assert(!measurePulse(pulses, 8, 0, pulse) && !measurePulse(pulses, 0, 10, pulse));
+    assert(waveformColumn(pulses, 0, 0, 1) == 0x40);
+    assert(waveformColumn(pulses, 0, 2, 1) == 0x7E);
+    assert(waveformColumn(pulses, 0, 3, 1) == 0x02);
+    assert(waveformColumn(pulses, 0, 0, 8) == 0x7E); // Preserve transitions when zoomed out.
+    assert(waveformColumn(pulses, 0, 10, 1) == 0);
+    complete = true; session.begin(0, {0, true, false});
+    for (unsigned i = 0; i < 512; ++i) session.add(0);
+    browseIndex = 0; handleCommand('w'); assert(waveform);
+    handleCommand('n'); assert(browseIndex == 120);
+    handleCommand('+'); assert(samplesPerPixel == 2);
+    handleCommand('m'); assert(!waveform);
     puts("PASS logic: all channels/edges, exact pre/post counts, timestamp wrap, auto capture, split commands");
 }
