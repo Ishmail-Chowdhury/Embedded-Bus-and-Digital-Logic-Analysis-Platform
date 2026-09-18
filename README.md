@@ -36,7 +36,7 @@ Use 115200 baud for the analyzers and host. The peripheral runs without serial l
 
 Power the OLED according to its **module** specification; see the electrical constraints before connecting it to 5 V logic.
 
-I use pin-change interrupts to queue SDA/SCL snapshots from one port read. The decoder records 7-bit addresses, direction, up to 16 data bytes, NACK position, truncation, and repeated START boundaries. History holds the latest 32 address phases; a repeated START ends one phase and starts another. Traffic to 0x3C on the observed bus is retained because the OLED is physically separate.
+I use pin-change interrupts to queue SDA/SCL snapshots from one port read. The decoder records 7-bit and 10-bit addresses, direction, up to 16 data bytes, NACK position, truncation, repeated START boundaries, and the capture-relative START timestamp. History holds the latest 16 address phases; a repeated START ends one phase and starts another. Traffic to 0x3C on the observed bus is retained because the OLED is physically separate.
 
 Commands:
 
@@ -45,12 +45,15 @@ Commands:
 | `r` | Clear history and arm while the observed bus is idle |
 | `s` or either button | Pause; discard an unfinished address phase |
 | `n` / `p` or buttons | Browse captured phases while paused |
+| `g` | Toggle the optional 8 µs observed-state filter while paused; applies on next arm |
 
 Start with the traffic source stopped, send `r`, then start the source. After `s`, send `n` or `p` to display the selected packet. OLED shows the first eight data bytes; Serial prints all sixteen stored bytes. Arming while SDA/SCL is low is refused; wait for idle and retry.
 
-Packet flags are hexadecimal: `01` NACK, `02` payload truncated, `04` ended by repeated START, `08` unsupported 10-bit address header, `10` incomplete byte. `NAK 0` means address NACK, `1..16` identifies a stored data byte, and `255` means none or beyond stored payload (check the NACK flag). A final read-byte NACK is normally intentional.
+Packet flags are hexadecimal: `01` NACK, `02` payload truncated, `04` ended by repeated START, `08` unresolved 10-bit read address, `10` incomplete byte. `NAK 0` means either address byte was NACKed, `1..16` identifies a stored data byte, and `255` means none or beyond stored payload (check the NACK flag). A final read-byte NACK is normally intentional.
 
-Queue overflow stops capture and reports edge loss. Completed phases before the loss remain available. This detects queue exhaustion; it cannot detect every transition that hardware missed at excessive bus speed. This is an educational sniffer, without 10-bit-address decoding, glitch filtering, packet timestamps, or a guaranteed 100/400 kHz capture rate.
+Queue overflow stops capture and reports edge loss. Completed phases before the loss remain available. This detects queue exhaustion; it cannot detect every transition that hardware missed at excessive bus speed. I timestamp queued observations with `micros()` before decoding. Serial prints `START_us` relative to arming, with 4 µs granularity and interrupt-service latency; timestamps wrap after about 71.6 minutes. Ten-bit reads resolve the address selected by the preceding acknowledged write-address phase across repeated START; a missing/mismatched selection is flagged.
+
+The optional filter rejects observed combined SDA/SCL states lasting less than 8 µs. It is off by default, preserves accepted observations' original timestamps, and can remove legitimate bus states shorter than its threshold. It is not a nanosecond electrical spike filter. Timestamp storage reduces history to 16 packets and the edge queue to 31 usable entries. Continuous 100/400 kHz capture is not guaranteed.
 
 ## Mode 2: logic analyzer
 
@@ -121,7 +124,7 @@ Accepted, debounced changes on input-configured bits latch the bank status even 
 
 ## Firmware extensions
 
-I am extending the working hardware configuration through tested firmware stages. Burst reads, configurable switch debounce, and per-pin event counters are now implemented. I record build and regression results for these additions in [validation](docs/validation.md); my earlier hardware confirmation applies to the configuration before these extensions.
+I am extending the working hardware configuration through tested firmware stages. Burst reads, configurable switch debounce, per-pin event counters, timestamped 10-bit I2C decoding, and optional observed-state filtering are implemented. I record build and regression results for these additions in [validation](docs/validation.md); my earlier hardware confirmation applies to the configuration before these extensions.
 
 ## Verification
 

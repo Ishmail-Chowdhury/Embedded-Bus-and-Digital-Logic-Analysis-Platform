@@ -17,7 +17,7 @@ void decodeBusState(const BusState& state) {
     switch (detectEdge(state)) {
     case START:
         if (inTransaction) finishPacket(PACKET_RESTART);
-        initBitDecoder(); initPacketDecoder(); inTransaction = true;
+        initBitDecoder(); beginPacket(state.atUs); inTransaction = true;
         break;
     case CLOCK_RISE:
         if (inTransaction) {

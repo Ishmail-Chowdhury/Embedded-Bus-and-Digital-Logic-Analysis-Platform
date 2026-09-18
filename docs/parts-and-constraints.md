@@ -52,7 +52,7 @@ I have confirmed expected physical operation of the platform. I retain the follo
 | 512 samples and pre/post split | Native tests across all channels and both edges, including tick rollover | Known-waveform comparison |
 | Contiguous capture timestamps | Capture/display separated; each arm clears history | Reference-analyzer comparison after sampling changes |
 | I2C passive observation | A4/A5 inputs; OLED isolated; queue captures port snapshots | Bus rate, START/STOP visibility and minimum edge spacing |
-| I2C packet semantics | ACK/NACK, repeated START, payload bounds, history wrap tested | Known transaction stream comparison |
+| I2C packet semantics | 7/10-bit addressing, ACK/NACK, repeated START, timestamp/filter wrap, payload and history bounds tested | Known transaction stream comparison |
 | PCF input/output behavior | `latch OR direction`; independent bus; ACK/timeouts and retry | Part suffix, address straps, physical levels and load current |
 | Register-mapped target | Selected start address; coherent 1–32-byte reads; cached callbacks; read-only registers | Repeated START transactions and clock stretching |
 | Input-change interrupt | Per-pin configurable debounce and saturating counters; bank IRQ masks/W1C; released host line | Debounce latency, missed sub-sample pulses and pull-up loading |

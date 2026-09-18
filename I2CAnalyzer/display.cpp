@@ -24,7 +24,7 @@ void updateDisplay(int count, const Packet& packet, int selectedIndex) {
     display.clear();
     if (!count) { display.drawString(0, 0, "No packets"); return; }
     char line[17];
-    snprintf(line, sizeof(line), "%d/%d %02X %c N%u", selectedIndex + 1, count,
+    snprintf(line, sizeof(line), "%d/%d %03X %c N%u", selectedIndex + 1, count,
              packet.address, packet.read ? 'R' : 'W', packet.length);
     display.drawString(0, 0, line);
     for (uint8_t row = 0; row < 2; ++row) {
@@ -35,6 +35,8 @@ void updateDisplay(int count, const Packet& packet, int selectedIndex) {
     }
     snprintf(line, sizeof(line), "FLAGS %02X NAK %u", packet.flags, packet.nackIndex);
     display.drawString(0, 3, line);
+    Serial.print(F("START_us=")); Serial.print(packet.startUs);
+    Serial.print(packet.tenBit ? F(" 10-bit ") : F(" 7-bit "));
     Serial.print(F("ADDR=0x")); Serial.print(packet.address, HEX);
     Serial.print(packet.read ? F(" R ") : F(" W "));
     for (uint8_t i = 0; i < packet.length; ++i) { Serial.print(packet.data[i], HEX); Serial.print(' '); }

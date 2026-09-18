@@ -8,7 +8,7 @@ My hardware result is a functional confirmation. The numerical results recorded 
 
 ## Firmware extension results
 
-I have added coherent 1–32-byte register reads, configurable per-pin debounce, and sixteen saturating event counters. The regression suite covers bounce rejection, accepted rising/falling changes, counter saturation/clear, raw versus debounced inputs, stable read selection, burst bounds, and short-read handling. These firmware additions have software/build validation; the physical-operation confirmation above refers to my earlier hardware configuration.
+I have added coherent 1–32-byte register reads, configurable per-pin debounce, and sixteen saturating event counters. The regression suite covers bounce rejection, accepted rising/falling changes, counter saturation/clear, raw versus debounced inputs, stable read selection, burst bounds, and short-read handling. I also added capture-relative I2C timestamps, ten-bit address resolution across repeated START, a selectable 8 µs observed-state filter, and a 16-packet history sized for SRAM. Tests cover address NACK/context reset, timestamp preservation, short-glitch rejection, and timestamp wrap. These firmware additions have software/build validation; the physical-operation confirmation above refers to my earlier hardware configuration.
 
 ## Recorded results
 
@@ -62,7 +62,7 @@ Omit `--libraries` when U8g2 is installed in the Arduino sketchbook. The build s
 
 I ran five native suites with UndefinedBehaviorSanitizer, and all five passed:
 
-- I2C: edge classification, attach-mid-transaction, ACK/NACK, repeated START read, address NACK, external 0x3C, oversized payload, unsupported 10-bit header, partial byte, 32-packet history rollover and invalid indexes.
+- I2C: edge classification, attach-mid-transaction, ACK/NACK, repeated START read, address NACK, external 0x3C, oversized payload, 10-bit addressing, partial byte, 16-packet history rollover and invalid indexes.
 - Logic: every channel and both edges, trigger-window counts, 16-bit tick rollover, disabled-trigger automatic capture, early-edge rejection, capture completion immutability and split serial commands.
 - Peripheral: pointer-only writes, sequential writes, cached callbacks, physical direction masks, read-only registers, bank IRQ status/masks/W1C, disable/re-enable, input-vs-output changes, missing device/recovery and a host write injected during an input read.
 - Host: 10 kHz prescaler arithmetic, repeated START, address/data failures, short reads, and restoring the prescaler after a Wire timeout.
@@ -76,8 +76,8 @@ I compiled all seven configurations successfully. The compiler reported unused p
 
 | Sketch / configuration | Flash bytes | Static SRAM bytes | Remaining SRAM bytes |
 |---|---:|---:|---:|
-| I2C analyzer, 128×32 | 11,268 | 1,412 | 636 |
-| I2C analyzer, 128×64 | 11,280 | 1,412 | 636 |
+| I2C analyzer, 128×32 | 12,550 | 1,297 | 751 |
+| I2C analyzer, 128×64 | 12,562 | 1,297 | 751 |
 | Logic analyzer, 128×64 | 11,354 | 1,295 | 753 |
 | Logic analyzer, 128×32 | 11,342 | 1,295 | 753 |
 | Peripheral | 4,640 | 332 | 1,716 |
@@ -115,7 +115,7 @@ I keep this procedure as a reference for reproducing the setup and checking futu
 ### 3. I2C analyzer
 
 1. With the source idle, arm using `r`, then generate the device-ID sequence above at 10 kHz. Pause with `s` and browse. Expect two phases: 0x20 W containing 0x0A with repeated-START flag, then 0x20 R containing 0x42 with final-data NACK at position 1.
-2. Compare a long known stream against a reference analyzer. Verify no phantom OLED traffic, no missing address phases, latest-32 retention and payload truncation flags for >16-byte transfers.
+2. Compare a long known stream against a reference analyzer. Verify no phantom OLED traffic, no missing address phases, latest-16 retention and payload truncation flags for >16-byte transfers.
 3. Test both buttons, held buttons, address NACK, clock stretching, incomplete transactions, START/repeated START/STOP timing and attaching with a busy bus. Rendering must occur only when paused.
 4. Qualify worst-case edge spacing and interrupt latency at the intended rate. If packets differ or overflow occurs, the rate is not accepted. Do not infer 100/400 kHz support from a successful slow-bus test.
 

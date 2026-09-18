@@ -1,7 +1,8 @@
 #include "ring_buffer.h"
 #include <string.h>
+#include "config.h"
 
-static Packet packets[32];
+static Packet packets[PACKET_HISTORY_SIZE];
 static int head = 0;
 static int tail = 0;
 static int count = 0;
@@ -17,14 +18,14 @@ void initRingBuffer()
 void pushPacket(const Packet& packet)
 {
     packets[tail] = packet;
-    tail = (tail + 1) % 32;
-    if (count < 32)
+    tail = (tail + 1) % PACKET_HISTORY_SIZE;
+    if (count < PACKET_HISTORY_SIZE)
     {
         count++;
     }
     else
     {
-        head = (head + 1) % 32;
+        head = (head + 1) % PACKET_HISTORY_SIZE;
     }
 }
 
@@ -39,7 +40,7 @@ bool getPacket(int index, Packet& out)
     {
         return false;
     }
-    int pos = (head + index) % 32;
+    int pos = (head + index) % PACKET_HISTORY_SIZE;
     out = packets[pos];
     return true;
 }

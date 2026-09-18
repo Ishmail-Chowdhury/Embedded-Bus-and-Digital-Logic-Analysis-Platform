@@ -4,6 +4,18 @@
 #include "capture.h"
 #include "ring_buffer.h"
 #include "display.h"
+#include "bus_filter.h"
+static BusFilter filter;
+static bool filtering = false;
+
+static void acceptState(const BusState& state) {
+    BusState accepted;
+    if (filter.push(state, accepted)) decodeBusState(accepted);
+}
+static void settleFilter() {
+    uint32_t now; BusState accepted;
+    if (busCaptureIdleTime(now) && filter.settle(now, accepted)) decodeBusState(accepted);
+}
 static bool capturing = false;
 static int selectedIndex = 0;
 static uint8_t lastButtons = 3;
@@ -23,13 +35,15 @@ static void arm() {
         Serial.println(F("Bus busy/stuck; stop the source and send r again"));
         return;
     }
+    filter.reset(filtering ? GLITCH_FILTER_US : 0);
     startBusCapture(); capturing = true;
 }
 static void pauseCapture(bool overflowed) {
     stopBusCapture(); capturing = false;
     // Drain complete segments. Discard any transaction that was cut short.
     BusState state;
-    if (!overflowed) while (nextBusState(state)) decodeBusState(state);
+    if (!overflowed) while (nextBusState(state)) acceptState(state);
+    if (!overflowed) settleFilter();
     resetDecoder(); selectedIndex = packetCount() ? packetCount() - 1 : 0;
     showCaptureStatus(false, overflowed);
     Serial.println(overflowed ? F("EDGE QUEUE OVERFLOW: capture invalid after edge loss") : F("Paused; n/p browse, r clears and rearms"));
@@ -46,19 +60,24 @@ void setup() {
     Serial.begin(115200); initBusSampler(); initDisplay();
     pinMode(BUTTON_NEXT, INPUT_PULLUP); pinMode(BUTTON_PREV, INPUT_PULLUP);
     initRingBuffer(); resetDecoder(); showCaptureStatus(false, false);
-    Serial.println(F("I2C sniffer: r=clear/arm, s=pause, n/p=browse. OLED on D8/D9."));
+    Serial.println(F("I2C sniffer: r=clear/arm, s=pause, n/p=browse g=filter. OLED on D8/D9."));
 }
 void loop() {
     if (capturing) {
         BusState state;
         // Bounded drain also lets the user pause a continuous bus.
-        for (uint8_t i = 0; i < EDGE_QUEUE_SIZE && nextBusState(state); ++i) decodeBusState(state);
+        for (uint8_t i = 0; i < EDGE_QUEUE_SIZE && nextBusState(state); ++i) acceptState(state);
+        settleFilter();
         if (busCaptureOverflowed()) pauseCapture(true);
     }
     if (Serial.available()) {
         const char cmd = Serial.read();
         if (cmd == 's' && capturing) pauseCapture(false);
         else if (cmd == 'r') { capturing = false; arm(); }
+        else if (!capturing && cmd == 'g') {
+            filtering = !filtering;
+            Serial.println(filtering ? F("Filter 8 us; applies on next arm") : F("Filter off"));
+        }
         else if (!capturing && (cmd == 'n' || cmd == 'p')) browse(cmd);
     }
     const uint8_t buttons = (digitalRead(BUTTON_NEXT) != LOW) | ((digitalRead(BUTTON_PREV) != LOW) << 1);
