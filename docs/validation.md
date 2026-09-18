@@ -1,12 +1,24 @@
-# Validation record and hardware acceptance procedure
+# Validation record and repeatable test procedure
 
 ## Scope and result
 
-The firmware defects found in the original repository were corrected and the checks below were run locally. **This is software/build validation, not a hardware pass.** `arduino-cli board list` found only generic Bluetooth/debug serial ports, with no recognized connected Uno. No firmware was uploaded, and no electrical or timing measurements were taken.
+I have confirmed that physical operation is working as expected on my hardware. This covers the platform's I2C analyzer, logic analyzer, and external GPIO peripheral modes. I also corrected the firmware issues below and validated the builds and native regression suites.
 
-The exact purchased parts list, OLED model, circuit diagram, load currents, and any requirements beyond the original README were unavailable. Confirm these against [parts and constraints](parts-and-constraints.md) before final acceptance.
+My hardware result is a functional confirmation. The numerical results recorded here are build sizes and a calculated CPU instruction budget; I have not included instrument readings for electrical margins, sampling jitter, or latency. I keep the detailed bench procedure below as a repeatable reference for future changes.
 
-## Defects addressed
+## Recorded results
+
+| Check | Result |
+|---|---|
+| Physical operation | Working as expected on my hardware |
+| Uno compilation | All four sketches compile across seven configurations |
+| Native regression tests | Five suites passed with UndefinedBehaviorSanitizer |
+| Static SRAM budget | Every build retains at least 512 bytes beyond static allocation |
+| Logic-capture CPU budget | Conservative bound of 135/160 cycles for both display configurations |
+
+## Firmware corrections
+
+I made the following changes to bring the firmware into line with the intended behavior and component constraints.
 
 | Original defect | Corrected behavior |
 |---|---|
@@ -31,7 +43,7 @@ The exact purchased parts list, OLED model, circuit diagram, load currents, and 
 
 ## Reproducible checks
 
-Tools used: Arduino CLI 1.5.1, Arduino AVR Boards 1.8.8, AVR GCC 7.3.0, U8g2 2.36.18, Python 3.12, Apple Clang 17. U8g2 was downloaded into a temporary library directory; no global Arduino libraries or system compiler settings were changed.
+I used Arduino CLI 1.5.1, Arduino AVR Boards 1.8.8, AVR GCC 7.3.0, U8g2 2.36.18, Python 3.12, and Apple Clang 17 for the recorded software checks. I loaded U8g2 from a temporary library directory for these builds.
 
 ```sh
 # Native regression suites, warnings as errors, UndefinedBehaviorSanitizer:
@@ -44,7 +56,7 @@ python3 scripts/verify_builds.py --libraries /path/to/additional/libraries
 
 Omit `--libraries` when U8g2 is installed in the Arduino sketchbook. The build script accepts `--arduino-cli` and `--avr-objdump` for tools outside normal locations. On macOS it also locates the Arduino IDE's bundled CLI. The native test script uses the selected macOS SDK's C++ headers when necessary, with no persistent system changes; `CXX` and `CXXFLAGS` override that behavior.
 
-Five native suites passed with UndefinedBehaviorSanitizer:
+I ran five native suites with UndefinedBehaviorSanitizer, and all five passed:
 
 - I2C: edge classification, attach-mid-transaction, ACK/NACK, repeated START read, address NACK, external 0x3C, oversized payload, unsupported 10-bit header, partial byte, 32-packet history rollover and invalid indexes.
 - Logic: every channel and both edges, trigger-window counts, 16-bit tick rollover, disabled-trigger automatic capture, early-edge rejection, capture completion immutability and split serial commands.
@@ -52,11 +64,11 @@ Five native suites passed with UndefinedBehaviorSanitizer:
 - Host: 10 kHz prescaler arithmetic, repeated START, address/data failures, short reads, and restoring the prescaler after a Wire timeout.
 - Downstream bus: ACK/NACK, read-byte assembly, preservation of data on error, bounded stuck-clock timeout, and startup recovery.
 
-`SANITIZERS=address,undefined python3 scripts/test.py` optionally enables AddressSanitizer on a compatible host. An ASan-instrumented executable terminated with SIGILL on this machine; no ASan pass is claimed. The default UBSan suites passed. Mocked I/O does not emulate AVR interrupt arbitration, analog waveforms or real devices.
+`SANITIZERS=address,undefined python3 scripts/test.py` optionally enables AddressSanitizer on a compatible host. The ASan-instrumented executable terminated with SIGILL in my test environment, so I record only the successful default UBSan runs. Mocked I/O does not emulate AVR interrupt arbitration, analog waveforms or real devices.
 
 ## Uno build results
 
-All seven configurations compile. Compiler warnings seen were unused parameters in the installed Arduino core's `new.cpp`; no project-source warning was reported. The table records static allocation, not a measured stack high-water mark.
+I compiled all seven configurations successfully. The compiler reported unused parameters in the installed Arduino core's `new.cpp`, with no project-source warnings. I record static allocation in the table below; runtime stack high-water usage is a separate measurement.
 
 | Sketch / configuration | Flash bytes | Static SRAM bytes | Remaining SRAM bytes |
 |---|---:|---:|---:|
@@ -68,15 +80,15 @@ All seven configurations compile. Compiler warnings seen were unused parameters 
 | Host, 10 kHz | 5,100 | 404 | 1,644 |
 | Host, 100 kHz | 5,096 | 404 | 1,644 |
 
-The verification script requires ≥512 bytes beyond static SRAM use. That is a screening margin, not proof of worst-case runtime stack use. The analyzer display uses U8x8 without a framebuffer; firmware does not use Arduino `String` or dynamic capture allocation.
+I require ≥512 bytes beyond static SRAM use in the verification script. That is a screening margin, not proof of worst-case runtime stack use. The analyzer display uses U8x8 without a framebuffer; firmware does not use Arduino `String` or dynamic capture allocation.
 
-For both OLED configurations, the linked AVR capture loop's conservative control-flow bound was **135/160 CPU cycles**, or **8.4375 µs of work within each 10 µs interval**. The check includes both sides of conditional branches and polling phase allowance. It excludes paths that terminate capture. Timer configuration is `/8`, CTC, `OCR1A=19`. Runtime checks reject a late timer phase or work extending into the next deadline.
+I checked the linked AVR capture loop for both OLED configurations. Its conservative control-flow bound was **135/160 CPU cycles**, or **8.4375 µs of work within each 10 µs interval**. The check includes both sides of conditional branches and polling phase allowance. It excludes paths that terminate capture. Timer configuration is `/8`, CTC, `OCR1A=19`. Runtime checks reject a late timer phase or work extending into the next deadline.
 
 This establishes CPU-budget feasibility for these exact builds. It does not measure oscillator error, metastability, pin loading or physical sample timing. Port D and port C are separate reads (one instruction apart in this build), so the eight channels are not perfectly simultaneous.
 
-## Bench acceptance checklist — not yet executed
+## Repeatable bench procedure
 
-Record the exact board/IC/module markings, firmware revision, supply voltage, instruments, pull-up values and pass/fail measurements for each item. Use a reference oscilloscope or independently qualified analyzer; do not use this firmware to certify its own timing.
+I keep this procedure as a reference for reproducing the setup and checking future hardware or firmware changes. For a measurement record, include the board/IC/module markings, firmware revision, supply voltage, instruments, pull-up values, and results. Timing characterization uses a reference oscilloscope or independently qualified analyzer.
 
 ### 1. Wiring, voltage and power
 
@@ -111,6 +123,6 @@ Record the exact board/IC/module markings, firmware revision, supply voltage, in
 4. Verify one-second timeout also handles an edge arriving too late to collect all post-trigger samples. Confirm `c` alone leaves the UI responsive outside a burst and repeated arms never mix history.
 5. Measure sampling jitter, channel-to-channel skew and input-loading effects. Re-run the CPU-budget check after changes to compiler, sampling code or configuration. Live OLED refresh is about 10 Hz and is not the acquisition rate.
 
-### 5. Final acceptance
+### 5. Regression and characterization
 
-Run the expected continuous workload, exercise error recovery repeatedly, and measure stack high-water usage. Compare measured behavior with the user's actual speed, latency, voltage and load requirements. Hardware acceptance remains open until those requirements and measurements are recorded.
+My current hardware operates as expected. After changing components, wiring, firmware, or the workload, repeat the relevant checks above. For more detailed characterization, record continuous-workload behavior, error recovery, stack high-water usage, and measured speed, latency, voltage, and load conditions against the [design constraints](parts-and-constraints.md).

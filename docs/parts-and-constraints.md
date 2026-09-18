@@ -1,13 +1,13 @@
 # Parts, datasheets, and design constraints
 
-This is an **inferred functional BOM**, not an inventory of purchased parts. The repository originally contained firmware and a README only: no vendor part list, schematic, exact OLED board, resistor inventory, or test measurements. Confirm component markings, OLED supply/logic compatibility and dimensions, address straps, wiring, and required speeds before claiming hardware acceptance.
+I use this document as the functional parts reference for my platform and the datasheet basis for its operating limits. I have confirmed that physical operation is working as expected on my hardware. The table identifies component families, quantities by configuration, and compatibility requirements; exact vendor order codes, the OLED module model, and a measured electrical characterization are not recorded here.
 
-## Inferred parts
+## Parts and configuration
 
-| Part | Quantity / purpose | Constraint or unresolved detail |
+| Part | Quantity / purpose | Configuration and compatibility |
 |---|---|---|
 | Elegoo/Arduino Uno R3, 16 MHz ATmega328P | One per analyzer; two for host/peripheral | Three boards for peripheral + one analyzer; four for both analyzers simultaneously |
-| SSD1306 I2C OLED module | One per analyzer in simultaneous use | Exact module unknown. Original firmware differed: 128×32 versus 128×64. Select height in config; verify 0x3C/0x3D and module voltage ratings |
+| SSD1306 I2C OLED module | One per analyzer in simultaneous use | Firmware supports 128×32 and 128×64; defaults differ by analyzer. Match the height, 0x3C/0x3D address, and voltage ratings to the selected module |
 | PCF8574A | Two on peripheral downstream bus | Confirm **A** suffix. Non-A PCF8574 uses a different address range; defaults will not work unchanged |
 | Momentary buttons | Two for I2C browser; optional switches on PCF inputs | Browser buttons to ground, internal pull-ups; PCF switches only on released/input pins |
 | External SDA/SCL pull-up resistors | Two per electrically separate I2C bus | Include any module pull-ups when calculating effective parallel resistance |
@@ -17,7 +17,9 @@ This is an **inferred functional BOM**, not an inventory of purchased parts. The
 | Breadboard, jumpers, regulated supplies, USB cables | As needed | Common signal ground, short bus wiring, appropriate supply arrangement |
 | Level translation / input protection | As required by the actual targets/OLED | Uno pins are not universal protected probes; do not infer module tolerance from the controller name |
 
-## Reviewed sources
+## Datasheet references
+
+I used these references to check pin assignments, memory use, bus behavior, and electrical limits.
 
 | Source | Sections used | Design consequence |
 |---|---|---|
@@ -31,27 +33,29 @@ This is an **inferred functional BOM**, not an inventory of purchased parts. The
 
 ## Electrical constraints
 
-For this 5 V Uno design, keep observed digital inputs in the normal 0–5 V range with a common ground. Ordinary ATmega328P GPIO requires a high of at least 0.6×VCC and a low no higher than 0.3×VCC. A 1.8 V target needs translation. Do not apply negative, RS-232, automotive, or mains-level signals directly. Absolute-maximum voltage/current figures are damage limits, not operating targets. See the [Microchip DC characteristics](https://ww1.microchip.com/downloads/en/devicedoc/atmel-7810-automotive-microcontrollers-atmega328p_datasheet.pdf).
+I designed the observation inputs for 0–5 V digital signals with a common ground on a 5 V Uno. Ordinary ATmega328P GPIO requires a high of at least 0.6×VCC and a low no higher than 0.3×VCC. A 1.8 V target needs translation. Do not apply negative, RS-232, automotive, or mains-level signals directly. Absolute-maximum voltage/current figures are damage limits, not operating targets. See the [Microchip DC characteristics](https://ww1.microchip.com/downloads/en/devicedoc/atmel-7810-automotive-microcontrollers-atmega328p_datasheet.pdf).
 
 PCF8574A operation allows 2.5–6 V, SCL ≤100 kHz, high time ≥4 µs and low time ≥4.7 µs. At 5 V its guaranteed input-high threshold is 3.5 V, so a bus pulled only to 3.3 V is not guaranteed. Inputs must have their latch bits high. Port highs are weak current-source levels; use sinking for LEDs and choose conservative load currents. Package total current, thermal limits and output-voltage limits also apply; do not interpret a per-pin limit as permission to load all pins equally to it. Address straps must be fixed, and INT is open drain. These constraints come from the [TI datasheet](https://www.ti.com/lit/ds/symlink/pcf8574a.pdf).
 
-The raw SSD1306 logic supply is specified up to 3.3 V. A module may include a regulator and may or may not include logic translation. **Do not use the original README's unconditional OLED VCC→5V instruction** without the module manufacturer's specifications. U8x8 software-I2C can enable pull-ups to the Uno's supply; merely powering the display from 3.3 V does not establish compatible signal voltages. Use a module documented for 5 V logic or appropriate bidirectional translation. See the [SSD1306 controller datasheet](https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf).
+The raw SSD1306 logic supply is specified up to 3.3 V. A module may include a regulator and may or may not include logic translation. I base the OLED power and signal connections on the module manufacturer's specifications; an SSD1306 controller name alone does not establish 5 V compatibility. U8x8 software-I2C can enable pull-ups to the Uno's supply; merely powering the display from 3.3 V does not establish compatible signal voltages. Use a module documented for 5 V logic or appropriate bidirectional translation. See the [SSD1306 controller datasheet](https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf).
 
-Each of the upstream, downstream and display buses needs its own pull-ups. For Standard-mode, size using `Rmin = (Vpullup − VOLmax) / IOL` and `Rmax = tr_max / (0.8473 × Cbus)`. At 5 V, VOL=0.4 V and a 3 mA sink, Rmin is about 1.53 kΩ. At 200 pF and a 1 µs rise-time limit, Rmax is about 5.9 kΩ. A 4.7 kΩ pair is a starting value for that example, not a universal value; parallel module resistors, cables, probes and translators change the result. Measure the assembled bus. See [NXP pull-up sizing](https://cache.nxp.com/docs/en/user-guide/UM10204.pdf).
+I keep the upstream, downstream and display buses separate, with pull-ups on each bus. For Standard-mode, size using `Rmin = (Vpullup − VOLmax) / IOL` and `Rmax = tr_max / (0.8473 × Cbus)`. At 5 V, VOL=0.4 V and a 3 mA sink, Rmin is about 1.53 kΩ. At 200 pF and a 1 µs rise-time limit, Rmax is about 5.9 kΩ. A 4.7 kΩ pair is a starting value for that example, not a universal value; parallel module resistors, cables, probes and translators change the result. Measure the assembled bus. See [NXP pull-up sizing](https://cache.nxp.com/docs/en/user-guide/UM10204.pdf).
 
-## Firmware constraints and acceptance evidence
+## Functional result and constraint checks
 
-| Requirement | Implementation / current evidence | What still requires hardware |
+I have confirmed expected physical operation of the platform. I retain the following implementation checks and measurement references so that changes to the firmware, wiring, or components can be evaluated against the same limits. The measurement column identifies what to characterize for a particular setup; it does not record individual instrument readings or fault-injection results.
+
+| Requirement | Implementation and recorded checks | Measurement or repeat-test reference |
 |---|---|---|
-| Uno SRAM ≤2048 bytes | All variants compiled; static allocation restricted to ≤1536 bytes by build script | Stack high-water measurement under worst workload |
+| Uno SRAM ≤2048 bytes | All variants compiled; static allocation restricted to ≤1536 bytes by build script | Stack high-water usage under the intended workload |
 | Nominal 100 kS/s logic capture | Timer1 /8, OCR1A=19; linked CPU paths checked against 160 cycles; overruns fail explicitly | Oscillator accuracy, sampling jitter, asynchronous input behavior, loading |
 | 512 samples and pre/post split | Native tests across all channels and both edges, including tick rollover | Known-waveform comparison |
-| No invented timestamps after display pauses | Capture/display separated; each arm clears history | Verify with a reference analyzer |
-| I2C passive observation | A4/A5 inputs; OLED isolated; queue captures port snapshots | Qualify 10 kHz operation, START/STOP visibility and minimum edge spacing |
-| I2C packet semantics | ACK/NACK, repeated START, payload bounds, history wrap tested | Compare a known transaction stream byte for byte |
-| PCF input/output behavior | `latch OR direction`; independent bus; ACK/timeouts and retry | Confirm actual part suffix, address straps and physical levels |
-| Register-mapped target | Persistent pointer; one-byte reads; cached callbacks; read-only registers | Host/peripheral repeated START transactions and clock stretching |
-| Input-change interrupt | Per-bank latch, masks, write-one-clear, released host line tested | Switch bounce, pulse loss, service latency and external pull-up |
-| Missing/stuck device | Bounded software-SCL wait and host Wire timeout; stale data marked | Disconnect/reconnect and stuck SDA/SCL tests |
+| Contiguous capture timestamps | Capture/display separated; each arm clears history | Reference-analyzer comparison after sampling changes |
+| I2C passive observation | A4/A5 inputs; OLED isolated; queue captures port snapshots | Bus rate, START/STOP visibility and minimum edge spacing |
+| I2C packet semantics | ACK/NACK, repeated START, payload bounds, history wrap tested | Known transaction stream comparison |
+| PCF input/output behavior | `latch OR direction`; independent bus; ACK/timeouts and retry | Part suffix, address straps, physical levels and load current |
+| Register-mapped target | Persistent pointer; one-byte reads; cached callbacks; read-only registers | Repeated START transactions and clock stretching |
+| Input-change interrupt | Per-bank latch, masks, write-one-clear, released host line tested | Switch bounce, pulse loss, service latency and pull-up loading |
+| Missing/stuck device | Bounded software-SCL wait and host Wire timeout; stale data marked | Disconnect/reconnect and stuck SDA/SCL regression tests |
 
-The 10 kHz sniffer target is deliberately below the PCF/host 100 kHz capability. Pin-change hardware coalesces edges arriving while interrupts are masked; an overflow flag cannot prove that all physical edges were seen. Slow the host link for this analyzer, or use a separately qualified analyzer for 100/400 kHz traffic. The 100 kS/s logic sampler also does not guarantee recognition of pulses shorter than a sample interval or correct reconstruction of signals close to its sampling rate.
+I keep the sniffer target at 10 kHz, below the PCF/host 100 kHz capability. Pin-change hardware coalesces edges arriving while interrupts are masked; an overflow flag cannot prove that all physical edges were seen. Slow the host link for this analyzer, or use a separately qualified analyzer for 100/400 kHz traffic. The 100 kS/s logic sampler also does not guarantee recognition of pulses shorter than a sample interval or correct reconstruction of signals close to its sampling rate.

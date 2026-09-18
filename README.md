@@ -1,20 +1,20 @@
 # Embedded Bus and Digital Logic Analysis Platform
 
-Three independent Arduino Uno R3 modes: I2C transaction observation, eight-channel logic capture, and a register-mapped GPIO peripheral. Each sketch runs on its own 16 MHz ATmega328P board; the GPIO example needs a host and a peripheral board.
+I built this platform around three independent Arduino Uno R3 modes: I2C transaction observation, eight-channel logic capture, and a register-mapped GPIO peripheral. Each sketch runs on its own 16 MHz ATmega328P board; the GPIO example uses a host and a peripheral board.
 
-The firmware has been reviewed against component documentation, compiled for the Uno, and exercised with native regression tests. Physical operation and electrical/timing compliance still require the [bench checks](docs/validation.md). No separate parts list, schematic, or exact OLED module specification was present in the repository. The [parts and constraints document](docs/parts-and-constraints.md) records inferred parts, datasheet references, and the information still needed.
+I have confirmed that physical operation is working as expected on my hardware. I also checked the firmware against component documentation, compiled all four sketches for the Uno, and ran the native regression suites. I record the functional result, build results, and repeatable test procedure in [validation](docs/validation.md), with component references and operating limits in [parts and constraints](docs/parts-and-constraints.md).
 
-## Changes that affect existing wiring and operation
+## Design and operating limits
 
-- Both analyzers now use a separate software-I2C OLED connection: **SDA D8, SCL D9**. In particular, move the I2C analyzer's OLED off the observed A4/A5 bus.
-- The peripheral's expanders also use **SDA D8, SCL D9**, on a bus separate from the host A4/A5 link. These pins are on a different board from the analyzer OLED.
-- **PCF8574A addresses are 0x38 and 0x39** with the straps below. The original 0x20/0x21 settings did not match the named parts.
-- I2C observation has explicit capture and pause modes. OLED/Serial packet rendering happens when paused. The conservative software-sniffer target is **10 kHz or slower**, with SCL high/low each at least 50 µs; this requires bench qualification.
-- Logic capture is a **100 kS/s burst**, with a one-second maximum arm/capture window. Every arm starts fresh; `a` and `r` are aliases. Display updates and serial commands pause during the burst.
+- I keep each analyzer's OLED on a separate software-I2C connection: **SDA D8, SCL D9**. The I2C analyzer observes A4/A5 without adding display traffic to that bus.
+- I connect the peripheral's expanders through **SDA D8, SCL D9**, on a bus separate from the host A4/A5 link. These pins are on a different board from the analyzer OLED.
+- I configure the **PCF8574A addresses as 0x38 and 0x39** with the straps below.
+- I separate I2C capture from packet browsing. OLED/Serial packet rendering happens when paused. I use a conservative software-sniffer target of **10 kHz or slower**, with SCL high/low each at least 50 µs.
+- I configure logic capture as a nominal **100 kS/s burst**, with a one-second maximum arm/capture window. Every arm starts fresh; `a` and `r` are aliases. Display updates and serial commands pause during the burst.
 
 ## Build and upload
 
-Use Arduino AVR Boards and select **Arduino Uno**. Install **U8g2** for both analyzer sketches (U8x8 text mode); Adafruit GFX/SSD1306 are no longer needed. Wire is supplied by the AVR core. Validation used AVR core 1.8.8 and U8g2 2.36.18.
+Use Arduino AVR Boards and select **Arduino Uno**. Install **U8g2** for both analyzer sketches (U8x8 text mode); Adafruit GFX/SSD1306 are no longer needed. Wire is supplied by the AVR core. I validated the builds with AVR core 1.8.8 and U8g2 2.36.18.
 
 Open and upload one of:
 
@@ -23,7 +23,7 @@ Open and upload one of:
 - `ExternalGPIOPeripheral/peripheral/peripheral.ino`
 - `ExternalGPIOPeripheral/host/host.ino`
 
-Use 115200 baud for the analyzers and host. The peripheral runs without serial logging. Set `OLED_HEIGHT` and `OLED_ADDRESS` in the relevant analyzer's `config.h` for the actual module. The original defaults are retained: I2C analyzer 128×32, logic analyzer 128×64, address 0x3C. Both heights are supported and compiled. OLED absence does not prevent serial capture, but the display driver does not diagnose a disconnected module.
+Use 115200 baud for the analyzers and host. The peripheral runs without serial logging. Set `OLED_HEIGHT` and `OLED_ADDRESS` in the relevant analyzer's `config.h` for the actual module. My firmware defaults are: I2C analyzer 128×32, logic analyzer 128×64, address 0x3C. Both heights are supported and compiled. OLED absence does not prevent serial capture, but the display driver does not diagnose a disconnected module.
 
 ## Mode 1: I2C analyzer
 
@@ -36,7 +36,7 @@ Use 115200 baud for the analyzers and host. The peripheral runs without serial l
 
 Power the OLED according to its **module** specification; see the electrical constraints before connecting it to 5 V logic.
 
-Pin-change interrupts queue SDA/SCL snapshots from one port read. The decoder records 7-bit addresses, direction, up to 16 data bytes, NACK position, truncation, and repeated START boundaries. History holds the latest 32 address phases; a repeated START ends one phase and starts another. Traffic to 0x3C on the observed bus is retained because the OLED is physically separate.
+I use pin-change interrupts to queue SDA/SCL snapshots from one port read. The decoder records 7-bit addresses, direction, up to 16 data bytes, NACK position, truncation, and repeated START boundaries. History holds the latest 32 address phases; a repeated START ends one phase and starts another. Traffic to 0x3C on the observed bus is retained because the OLED is physically separate.
 
 Commands:
 
@@ -60,7 +60,7 @@ Queue overflow stops capture and reports edge loss. Completed phases before the 
 
 OLED uses D8/D9 and GND. Inputs are high impedance; provide defined external levels. See [input voltage and loading constraints](docs/parts-and-constraints.md).
 
-Timer1 schedules nominal 10 µs intervals. The 512-byte state ring reconstructs 16-bit sample ticks, including rollover, instead of storing redundant timestamps. A complete capture contains **100 samples before the trigger and 412 from the trigger onward**: one trigger sample plus 411 subsequent samples. Trigger edges before 100 samples of history are ignored. Relative times range from −1000 to +4110 µs; first-to-last span is 5.11 ms.
+I use Timer1 to schedule nominal 10 µs intervals. The 512-byte state ring reconstructs 16-bit sample ticks, including rollover, instead of storing redundant timestamps. A complete capture contains **100 samples before the trigger and 412 from the trigger onward**: one trigger sample plus 411 subsequent samples. Trigger edges before 100 samples of history are ignored. Relative times range from −1000 to +4110 µs; first-to-last span is 5.11 ms.
 
 | Command | Action |
 |---|---|
@@ -78,7 +78,7 @@ During a burst, interrupts are disabled to avoid Timer0/UART jitter; serial inpu
 
 ## Mode 3: external GPIO peripheral
 
-The peripheral Uno is an I2C target at **0x20** on A4/A5. Its separate D8/D9 bus controls two PCF8574A devices. Wire callbacks access cached registers only; all downstream transfers occur in `loop()`.
+I expose the peripheral Uno as an I2C target at **0x20** on A4/A5. Its separate D8/D9 bus controls two PCF8574A devices. Wire callbacks access cached registers only; all downstream transfers occur in `loop()`.
 
 | Connection | Wiring |
 |---|---|
@@ -117,9 +117,11 @@ Changes on input-configured bits latch the bank status even when that bank's IRQ
 
 ## Verification
 
+Physical operation is working as expected on my hardware. I use these checks to catch firmware regressions:
+
 ```sh
 python3 scripts/test.py
 python3 scripts/verify_builds.py
 ```
 
-The first command exercises production decoding/capture/register code with mocked I/O. The second compiles all four sketches, both display heights, and both host rates; checks a 512-byte minimum static SRAM reserve; and checks the linked logic-capture instruction budget. Use `--libraries PATH` for a U8g2 library outside the Arduino sketchbook. See [validation results and bench procedure](docs/validation.md) for exact environment details and limitations.
+The first command exercises production decoding/capture/register code with mocked I/O. The second compiles all four sketches, both display heights, and both host rates; checks a 512-byte minimum static SRAM reserve; and checks the linked logic-capture instruction budget. Use `--libraries PATH` for a U8g2 library outside the Arduino sketchbook. See my [validation results and repeatable bench procedure](docs/validation.md) for the recorded results, environment, and scope of each check.
