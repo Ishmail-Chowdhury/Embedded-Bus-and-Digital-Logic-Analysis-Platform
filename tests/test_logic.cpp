@@ -16,6 +16,8 @@ void showSampleDetail(uint16_t, uint16_t, const Sample&, uint16_t) {}
 void showCaptureError(bool) {}
 void showWaveform(const CaptureBuffer&, uint16_t, uint8_t, uint8_t, uint16_t) {}
 void showPulse(const PulseMeasurement&, uint8_t) {}
+void showAnalog(const uint8_t*, uint16_t) {}
+uint16_t captureAnalog(uint8_t*, uint16_t) { return 0; }
 int main() {
     for (uint8_t ch = 0; ch < 8; ++ch) {
         const uint8_t mask = 1U << ch;
@@ -73,5 +75,12 @@ int main() {
     handleCommand('n'); assert(browseIndex == 120);
     handleCommand('+'); assert(samplesPerPixel == 2);
     handleCommand('m'); assert(!waveform);
+    const uint8_t analogBytes[] = {0, 0, 255, 3, 0, 2, 0, 2};
+    assert(analogValue(analogBytes, 0) == 0 && analogValue(analogBytes, 1) == 1023);
+    assert(analogValue(analogBytes, 2) == 512);
+    assert(analogWaveformColumn(analogBytes, 4, 0, 0, 24) == 255);
+    assert(analogWaveformColumn(analogBytes, 4, 0, 2, 24) == 255);
+    assert(analogWaveformColumn(analogBytes, 4, 2, 0, 24) == 0);
+    handleCommand('o'); assert(!complete && !live && !analogCount && session.buffer.size() == 0);
     puts("PASS logic: all channels/edges, exact pre/post counts, timestamp wrap, auto capture, split commands");
 }

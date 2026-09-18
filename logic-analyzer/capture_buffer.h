@@ -14,6 +14,9 @@ public:
         if (count < CAPTURE_BUFFER_SIZE) ++count;
         newestTick = sample.tick;
     }
+    // Mutually exclusive analog mode reuses the state buffer; invalidates digital history.
+    uint8_t* scratchData() { clear(); return buffer; }
+    const uint8_t* rawData() const { return buffer; }
     bool full() const { return count == CAPTURE_BUFFER_SIZE; }
     uint16_t size() const { return count; }
     uint16_t capacity() const { return CAPTURE_BUFFER_SIZE; }

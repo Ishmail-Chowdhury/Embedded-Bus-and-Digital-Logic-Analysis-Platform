@@ -8,7 +8,7 @@ My hardware result is a functional confirmation. The numerical results recorded 
 
 ## Firmware extension results
 
-I have added coherent 1–32-byte register reads, configurable per-pin debounce, and sixteen saturating event counters. The regression suite covers bounce rejection, accepted rising/falling changes, counter saturation/clear, raw versus debounced inputs, stable read selection, burst bounds, and short-read handling. I also added capture-relative I2C timestamps, ten-bit address resolution across repeated START, a selectable 8 µs observed-state filter, and a 16-packet history sized for SRAM. Tests cover address NACK/context reset, timestamp preservation, short-glitch rejection, and timestamp wrap. I added tiled OLED waveforms with zoom/pan and sampled pulse-width measurements, including clipped-boundary lower bounds. Tests cover known widths across timestamp wrap, invalid channels/indexes, compressed transitions, and browser commands. These firmware additions have software/build validation; the physical-operation confirmation above refers to my earlier hardware configuration.
+I have added coherent 1–32-byte register reads, configurable per-pin debounce, and sixteen saturating event counters. The regression suite covers bounce rejection, accepted rising/falling changes, counter saturation/clear, raw versus debounced inputs, stable read selection, burst bounds, and short-read handling. I also added capture-relative I2C timestamps, ten-bit address resolution across repeated START, a selectable 8 µs observed-state filter, and a 16-packet history sized for SRAM. Tests cover address NACK/context reset, timestamp preservation, short-glitch rejection, and timestamp wrap. I added tiled OLED waveforms with zoom/pan and sampled pulse-width measurements, including clipped-boundary lower bounds. Tests cover known widths across timestamp wrap, invalid channels/indexes, compressed transitions, and browser commands. I added a separate A2 analog snapshot using the existing buffer. Native tests cover ADC-value unpacking, waveform extrema, bounds, and digital-history invalidation; AVR builds check the acquisition implementation. These firmware additions have software/build validation; the physical-operation confirmation above refers to my earlier hardware configuration.
 
 ## Recorded results
 
@@ -78,8 +78,8 @@ I compiled all seven configurations successfully. The compiler reported unused p
 |---|---:|---:|---:|
 | I2C analyzer, 128×32 | 12,550 | 1,297 | 751 |
 | I2C analyzer, 128×64 | 12,562 | 1,297 | 751 |
-| Logic analyzer, 128×64 | 13,152 | 1,387 | 661 |
-| Logic analyzer, 128×32 | 13,148 | 1,387 | 661 |
+| Logic analyzer, 128×64 | 14,156 | 1,405 | 643 |
+| Logic analyzer, 128×32 | 14,152 | 1,405 | 643 |
 | Peripheral | 4,640 | 332 | 1,716 |
 | Host, 10 kHz | 5,268 | 404 | 1,644 |
 | Host, 100 kHz | 5,264 | 404 | 1,644 |
@@ -127,6 +127,10 @@ I keep this procedure as a reference for reproducing the setup and checking futu
 4. Verify one-second timeout also handles an edge arriving too late to collect all post-trigger samples. Confirm `c` alone leaves the UI responsive outside a burst and repeated arms never mix history.
 5. Measure sampling jitter, channel-to-channel skew and input-loading effects. Re-run the CPU-budget check after changes to compiler, sampling code or configuration. Live OLED refresh is about 10 Hz and is not the acquisition rate.
 
-### 5. Regression and characterization
+### 5. Analog viewer regression
+
+Connect known slow 0–AVCC signals to A2 with a common ground. Run `o`, inspect the plot, and export with `d`. Verify 256 rows, 0–1023 ADC counts, nominal 104 µs spacing, and measured amplitude using the measured AVCC reference. Check ground, a stable intermediate level, and a slow waveform; verify that `r` returns to digital capture without mixing the analog data. Use a reference instrument to characterize settling and sample timing. This is a new-firmware bench procedure, not a recorded measurement result.
+
+### 6. Regression and characterization
 
 My current hardware operates as expected. After changing components, wiring, firmware, or the workload, repeat the relevant checks above. For more detailed characterization, record continuous-workload behavior, error recovery, stack high-water usage, and measured speed, latency, voltage, and load conditions against the [design constraints](parts-and-constraints.md).

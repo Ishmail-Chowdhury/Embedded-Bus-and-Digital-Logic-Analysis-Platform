@@ -78,12 +78,20 @@ I use Timer1 to schedule nominal 10 µs intervals. The 512-byte state ring recon
 | `+` / `-` | Zoom waveform to 1, 2, 4, or 8 samples per pixel |
 | `v` | Switch CH0–3 / CH4–7 on a 128×32 OLED; a 128×64 OLED shows all channels |
 | `m` | Measure the high/low pulse at the selected sample on channel `cN` |
+| `o` | Capture a slow analog waveform on A2; `d` exports ADC CSV |
 
 Send configuration commands first, then `r`. With edge triggering disabled, capture completes automatically after 512 samples. With no suitable edge, arming times out after one second. An edge too near the deadline also times out if its post-trigger samples cannot finish. Timing overruns discard the buffer and produce an explicit error.
 
 During a burst, interrupts are disabled to avoid Timer0/UART jitter; serial input may be lost, buttons are not serviced, and Arduino `millis()`/`micros()` do not track elapsed capture time. Do not send commands until completion/timeout. Timer1 belongs exclusively to capture, so Servo and Timer1 PWM cannot be added concurrently. I render digital waveforms directly as OLED tiles after capture, without allocating a framebuffer. Channel numbers appear on the left; a marker identifies the trigger column. Zoomed-out columns preserve any observed transition. In waveform view, `n`/`p` pan by a quarter screen; Serial reports the left sample index and µs per pixel. `w` returns to individual-sample browsing.
 
 For pulse measurements, select `cN`, browse to a sample within the pulse, and press `m`. Complete pulses report a sampled width at 10 µs resolution; pulses clipped by either capture boundary report a lower bound (`>=`) based only on observed intervals. This measures captured pulses and does not guarantee detection of sub-sample pulses.
+
+
+### Slow analog capture
+
+I use `o` for a separate analog snapshot on **A2**, referenced to **AVCC**. It replaces the digital capture, reuses the same 512-byte buffer, and records 256 ten-bit samples. The ADC runs freely at 125 kHz; after discarding its extended first conversion, samples are nominally 104 µs apart (about 9.615 kS/s, a 26.52 ms first-to-last span). The OLED plots the waveform and `d` exports `index,relative_us,adc10`. Values are raw 0–1023 counts; voltage conversion needs the actual measured AVCC reference. `w` redraws the analog view, `r` returns to digital capture, and `l` returns to live digital monitoring.
+
+This mode is for slow, low-voltage signals within 0–AVCC, with a common ground. It has no probe attenuation, input protection, AC coupling, or analog anti-alias filter. It does not run concurrently with digital acquisition. Interrupts and serial input pause during the roughly 27 ms acquisition, and Arduino elapsed-time functions lose that interval. I treat the configured ADC rate as nominal until measured against a reference instrument.
 
 ## Mode 3: external GPIO peripheral
 
@@ -130,7 +138,7 @@ Accepted, debounced changes on input-configured bits latch the bank status even 
 
 ## Firmware extensions
 
-I am extending the working hardware configuration through tested firmware stages. Burst reads, configurable switch debounce, per-pin event counters, timestamped 10-bit I2C decoding, optional observed-state filtering, OLED waveform browsing, and sampled pulse-width measurements are implemented. I record build and regression results for these additions in [validation](docs/validation.md); my earlier hardware confirmation applies to the configuration before these extensions.
+I am extending the working hardware configuration through tested firmware stages. Burst reads, configurable switch debounce, per-pin event counters, timestamped 10-bit I2C decoding, optional observed-state filtering, OLED waveform browsing, sampled pulse-width measurements, and a separate A2 analog viewer are implemented. I record build and regression results for these additions in [validation](docs/validation.md); my earlier hardware confirmation applies to the configuration before these extensions.
 
 ## Verification
 

@@ -85,3 +85,14 @@ void showPulse(const PulseMeasurement& pulse, uint8_t channel) {
     display.drawString(0, 2, (pulse.leftClipped || pulse.rightClipped) ? "Boundary clipped" : "10 us resolution");
     display.drawString(0, 3, "n/p sample w=wave");
 }
+
+#include "analog_capture.h"
+void showAnalog(const uint8_t* bytes, uint16_t count) {
+    display.clear(); display.drawString(0, 0, "A2 ADC 0..AVCC");
+    uint8_t tiles[128];
+    for (uint8_t row = 0; row < OLED_HEIGHT / 8 - 1; ++row) {
+        for (uint8_t x = 0; x < 128; ++x)
+            tiles[x] = analogWaveformColumn(bytes, count, x, row, OLED_HEIGHT - 8);
+        display.drawTile(0, row + 1, 16, tiles);
+    }
+}

@@ -51,6 +51,7 @@ I have confirmed expected physical operation of the platform. I retain the follo
 | Nominal 100 kS/s logic capture | Timer1 /8, OCR1A=19; linked CPU paths checked against 160 cycles; overruns fail explicitly | Oscillator accuracy, sampling jitter, asynchronous input behavior, loading |
 | 512 samples and pre/post split | Native tests across all channels and both edges, including tick rollover | Known-waveform comparison |
 | Waveforms and pulse widths | Tiled OLED rendering; zoom preserves observed transitions; clipped pulses show a lower bound | Reference pulses, display readability, sampling quantization |
+| Slow analog viewer | A2/AVCC; 256 ten-bit samples in reused storage; configured 104 µs intervals | AVCC accuracy, analog settling, bandwidth/aliasing; input must remain within 0–AVCC |
 | Contiguous capture timestamps | Capture/display separated; each arm clears history | Reference-analyzer comparison after sampling changes |
 | I2C passive observation | A4/A5 inputs; OLED isolated; queue captures port snapshots | Bus rate, START/STOP visibility and minimum edge spacing |
 | I2C packet semantics | 7/10-bit addressing, ACK/NACK, repeated START, timestamp/filter wrap, payload and history bounds tested | Known transaction stream comparison |
